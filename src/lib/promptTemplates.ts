@@ -406,5 +406,21 @@ export const AI_MODELS = [
     id: 'google/gemini-2.5-pro',
     name: 'Gemini 2.5 Pro',
     description: 'Mais poderoso - Melhor para análises complexas'
+  },
+  // OpenAI models
+  {
+    id: 'openai/gpt-4o-mini',
+    name: 'OpenAI GPT-4o Mini',
+    description: 'Rápido e acessível - ótimo para classificação e extração de dados'
+  },
+  {
+    id: 'openai/gpt-4o',
+    name: 'OpenAI GPT-4o',
+    description: 'Qualidade superior - indicado para análises detalhadas'
+  },
+  {
+    id: 'openai/o3-mini',
+    name: 'OpenAI o3-mini',
+    description: 'Raciocínio eficiente com bom custo - adequado para decisões e regras'
   }
 ];
