@@ -2,15 +2,15 @@
 // @ts-nocheck
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Busca usuário por email usando Admin API (paginações simples)
-async function findUserByEmail(admin: any, email: string) {
+// Busca usuário por email usando Admin API (paginação simples)
+async function findUserByEmail(admin, email) {
   try {
     const perPage = 200;
     for (let page = 1; page <= 10; page++) {
@@ -19,9 +19,9 @@ async function findUserByEmail(admin: any, email: string) {
         console.error("listUsers error:", error);
         return null;
       }
-      const found = data.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      const found = data?.users?.find((u) => (u.email || "").toLowerCase() === email.toLowerCase());
       if (found) return found;
-      if (!data.users || data.users.length < perPage) break; // Última página
+      if (!data?.users || data.users.length < perPage) break; // última página
     }
     return null;
   } catch (err) {
@@ -74,18 +74,24 @@ serve(async (req) => {
 
       if (createErr || !created?.user) {
         console.error("createUser error:", createErr);
-        return new Response(
-          JSON.stringify({
-            error: createErr?.message || "Falha ao criar usuário",
-            hint:
-              "Verifique se a Service Role Key está configurada e se o email já existe em outro projeto.",
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+        // Se já existe, tentar reaproveitar via listagem
+        if (createErr?.message?.toLowerCase()?.includes("already") || createErr?.status === 422) {
+          user = await findUserByEmail(admin, email);
+        }
 
-      user = created.user;
-      console.log("User created:", user.id);
+        if (!user) {
+          return new Response(
+            JSON.stringify({
+              error: createErr?.message || "Falha ao criar usuário",
+              hint: "Verifique se a Service Role Key está configurada e se o email já existe em outro projeto.",
+            }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      } else {
+        user = created.user;
+        console.log("User created:", user.id);
+      }
     } else {
       console.log("User found:", user.id);
     }

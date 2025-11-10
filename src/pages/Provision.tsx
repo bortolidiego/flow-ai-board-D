@@ -24,7 +24,9 @@ export default function Provision() {
       });
 
       if (error) {
-        throw error;
+        // Se a função retornou JSON com field "error", mostre
+        const serverMsg = (error as any)?.message || (data as any)?.error || "Falha na função";
+        throw new Error(serverMsg);
       }
 
       setResult(data);
