@@ -15,23 +15,32 @@ export default function Provision() {
   const workspaceName = "KB Tech";
 
   const ensureSession = async () => {
-    // Tenta criar; se já existir, faz login
-    const signup = await supabase.auth.signUp({ email, password });
-    if (signup.error && signup.error.message.toLowerCase().includes("already")) {
-      // Usuário já existe: tentar login
-      const signin = await supabase.auth.signInWithPassword({ email, password });
-      if (signin.error) throw signin.error;
-    } else if (signup.error) {
-      // Se outro erro, ainda tentar login (ex.: email confirmado anteriormente)
-      const signin = await supabase.auth.signInWithPassword({ email, password });
-      if (signin.error) throw signin.error;
+    // 1) Verificar sessão já existente
+    const current = await supabase.auth.getSession();
+    if (current.data?.session?.access_token) {
+      return current.data.session.access_token;
     }
-    // Garantir sessão
-    const { data: sessionData, error } = await supabase.auth.getSession();
-    if (error || !sessionData?.session?.access_token) {
-      throw new Error("Não foi possível obter sessão do usuário.");
+
+    // 2) Tentar login direto
+    const signin = await supabase.auth.signInWithPassword({ email, password });
+    if (!signin.error && signin.data?.session?.access_token) {
+      return signin.data.session.access_token;
     }
-    return sessionData.session.access_token;
+
+    // 3) Se login falhar, tentar cadastro
+    const signup = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: window.location.origin }
+    });
+
+    // 4) Após cadastro, tentar login novamente (para casos sem confirmação de email)
+    const signinAfter = await supabase.auth.signInWithPassword({ email, password });
+    if (signinAfter.error || !signinAfter.data?.session?.access_token) {
+      const reason = signup.error?.message || signinAfter.error?.message || "Falha ao obter sessão. Verifique se o projeto permite login sem confirmação de email.";
+      throw new Error(reason);
+    }
+    return signinAfter.data.session.access_token;
   };
 
   const handleProvision = async () => {
