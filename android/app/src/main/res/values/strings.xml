@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">flow-ai-board-58f50b5b-main</string>
+    <string name="title_activity_main">flow-ai-board-58f50b5b-main</string>
+    <string name="package_name">com.example.flowaiboard58f50b5bmain</string>
+    <string name="custom_url_scheme">com.example.flowaiboard58f50b5bmain</string>
+</resources>
