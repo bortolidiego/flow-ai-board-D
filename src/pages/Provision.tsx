@@ -14,17 +14,39 @@ export default function Provision() {
   const password = "Kb46837874#";
   const workspaceName = "KB Tech";
 
+  const ensureSession = async () => {
+    // Tenta criar; se já existir, faz login
+    const signup = await supabase.auth.signUp({ email, password });
+    if (signup.error && signup.error.message.toLowerCase().includes("already")) {
+      // Usuário já existe: tentar login
+      const signin = await supabase.auth.signInWithPassword({ email, password });
+      if (signin.error) throw signin.error;
+    } else if (signup.error) {
+      // Se outro erro, ainda tentar login (ex.: email confirmado anteriormente)
+      const signin = await supabase.auth.signInWithPassword({ email, password });
+      if (signin.error) throw signin.error;
+    }
+    // Garantir sessão
+    const { data: sessionData, error } = await supabase.auth.getSession();
+    if (error || !sessionData?.session?.access_token) {
+      throw new Error("Não foi possível obter sessão do usuário.");
+    }
+    return sessionData.session.access_token;
+  };
+
   const handleProvision = async () => {
     setLoading(true);
     setResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("provision-user-workspace", {
-        body: { email, password, workspaceName },
+      const token = await ensureSession();
+
+      const { data, error } = await supabase.functions.invoke("provision-current-user-workspace", {
+        body: { workspaceName },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (error) {
-        // Se a função retornou JSON com field "error", mostre
         const serverMsg = (error as any)?.message || (data as any)?.error || "Falha na função";
         throw new Error(serverMsg);
       }
@@ -32,7 +54,7 @@ export default function Provision() {
       setResult(data);
       toast({
         title: "Provisionamento concluído",
-        description: `Workspace "${workspaceName}" e usuário "${email}" criados.`,
+        description: `Workspace "${workspaceName}" criado/vinculado ao usuário "${email}".`,
       });
     } catch (err: any) {
       console.error("Provision error:", err);
@@ -52,7 +74,7 @@ export default function Provision() {
         <CardHeader>
           <CardTitle>Provisionamento Manual</CardTitle>
           <CardDescription>
-            Cria um usuário admin e o workspace associado. Use apenas uma vez.
+            Cria/vincula o workspace ao usuário autenticado (idempotente).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
