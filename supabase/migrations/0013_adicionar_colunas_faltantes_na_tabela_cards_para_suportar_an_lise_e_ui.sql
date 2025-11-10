@@ -1,0 +1,18 @@
+ALTER TABLE public.cards
+  ADD COLUMN IF NOT EXISTS conversation_summary TEXT,
+  ADD COLUMN IF NOT EXISTS funnel_score INTEGER,
+  ADD COLUMN IF NOT EXISTS funnel_type TEXT,
+  ADD COLUMN IF NOT EXISTS service_quality_score INTEGER,
+  ADD COLUMN IF NOT EXISTS ai_suggestions JSONB,
+  ADD COLUMN IF NOT EXISTS subject TEXT,
+  ADD COLUMN IF NOT EXISTS product_item TEXT,
+  ADD COLUMN IF NOT EXISTS value NUMERIC,
+  ADD COLUMN IF NOT EXISTS conversation_status TEXT,
+  ADD COLUMN IF NOT EXISTS win_confirmation TEXT,
+  ADD COLUMN IF NOT EXISTS loss_reason TEXT,
+  ADD COLUMN IF NOT EXISTS custom_fields_data JSONB,
+  ADD COLUMN IF NOT EXISTS current_lifecycle_stage TEXT,
+  ADD COLUMN IF NOT EXISTS lifecycle_progress_percent INTEGER,
+  ADD COLUMN IF NOT EXISTS resolution_status TEXT,
+  ADD COLUMN IF NOT EXISTS is_monetary_locked BOOLEAN,
+  ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ;
