@@ -25,6 +25,7 @@ const App = () => (
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
+          <Route path="/provision" element={<AppLayout><ProtectedRoute requireAdmin={false}>{/* rota pública intencional */}</ProtectedRoute></AppLayout>} />
           <Route 
             path="/" 
             element={
@@ -49,14 +50,16 @@ const App = () => (
               </ProtectedRoute>
             } 
           />
-          <Route 
-            path="/changelog" 
+          <Route
+            path="/changelog"
             element={
               <ProtectedRoute>
                 <AppLayout><Changelog /></AppLayout>
               </ProtectedRoute>
-            } 
+            }
           />
+          {/* Rota pública para provisionamento manual */}
+          <Route path="/provision" element={<ProvisionWrapper />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
