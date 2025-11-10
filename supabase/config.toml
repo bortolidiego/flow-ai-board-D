@@ -1,0 +1,16 @@
+project_id = "fpivkpyvicqkhgxdmbck"
+
+[functions.chatwoot-webhook]
+verify_jwt = false
+
+[functions.apply-behavior-template]
+verify_jwt = false
+
+[functions.calculate-card-sla]
+verify_jwt = false
+
+[functions.accept-invite]
+verify_jwt = false
+
+[functions.check-inactivity-cron]
+verify_jwt = false
