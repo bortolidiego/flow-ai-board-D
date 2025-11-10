@@ -41,20 +41,22 @@ export function AppLayout({ children }: AppLayoutProps) {
               {!isMobile && (
                 <Breadcrumb>
                   <BreadcrumbList>
-                    {breadcrumbs.map((item, index) => (
-                      <BreadcrumbItem key={index}>
-                        {index < breadcrumbs.length - 1 ? (
-                          <>
-                            <BreadcrumbLink asChild>
-                              <Link to={item.href || '#'}>{item.label}</Link>
-                            </BreadcrumbLink>
-                            <BreadcrumbSeparator />
-                          </>
-                        ) : (
-                          <BreadcrumbPage>{item.label}</BreadcrumbPage>
-                        )}
-                      </BreadcrumbItem>
-                    ))}
+                    {breadcrumbs.map((item, index) =>
+                      index < breadcrumbs.length - 1
+                        ? [
+                            <BreadcrumbItem key={index}>
+                              <BreadcrumbLink asChild>
+                                <Link to={item.href || '#'}>{item.label}</Link>
+                              </BreadcrumbLink>
+                            </BreadcrumbItem>,
+                            <BreadcrumbSeparator key={`sep-${index}`} />
+                          ]
+                        : (
+                            <BreadcrumbItem key={index}>
+                              <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                            </BreadcrumbItem>
+                          )
+                    )}
                   </BreadcrumbList>
                 </Breadcrumb>
               )}
