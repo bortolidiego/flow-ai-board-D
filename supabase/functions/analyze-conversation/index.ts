@@ -293,8 +293,27 @@ serve(async (req) => {
       modelName = openaiDefaultKey ? 'openai/gpt-4o-mini' : 'google/gemini-2.5-flash-lite';
     }
     // Detect provider from model string (e.g., "openai/gpt-4o-mini" or "google/gemini-2.5-flash-lite")
-    const [providerPrefix, rawModelId] = modelName.includes('/') ? modelName.split('/') : ['google', modelName];
-    const provider = providerPrefix.toLowerCase();
+    // Detect provider from model string; handle IDs sem prefixo (ex.: 'gpt-4o-mini')
+    let provider: string;
+    let rawModelId: string;
+    if (modelName.includes('/')) {
+      const [providerPrefix, innerModelId] = modelName.split('/');
+      provider = providerPrefix.toLowerCase();
+      rawModelId = innerModelId;
+    } else {
+      const id = modelName.toLowerCase();
+      const isOpenAIId = id.startsWith('gpt-') || id.startsWith('o3') || id.startsWith('o1') || id.includes('text-embedding') || id.includes('whisper');
+      const isGoogleId = id.includes('gemini') || id.startsWith('google');
+      if (isOpenAIId) {
+        provider = 'openai';
+      } else if (isGoogleId) {
+        provider = 'google';
+      } else {
+        // fallback: preferir OpenAI se chave existir
+        provider = Deno.env.get('OPENAI_API_KEY') ? 'openai' : 'google';
+      }
+      rawModelId = modelName;
+    }
     const systemPrompt = aiConfig?.use_custom_prompt && aiConfig?.custom_prompt
       ? aiConfig.custom_prompt
       : aiConfig?.generated_prompt || 'Você é um assistente de análise de conversas. Analise a conversa e extraia informações estruturadas.';
@@ -1042,14 +1061,14 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     }
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         analysis: {
           summary: analysis.summary,
-          intentionScore: analysis.intention_analysis.score,
-          intentionType: analysis.intention_analysis.type,
-          serviceQualityScore: analysis.service_quality.score,
-          suggestions: analysis.service_quality.suggestions
+          funnelScore: analysis.funnel_analysis?.score ?? null,
+          funnelType: analysis.funnel_analysis?.type ?? null,
+          serviceQualityScore: analysis.service_quality?.score ?? null,
+          suggestions: analysis.service_quality?.suggestions ?? []
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
