@@ -1,59 +1,100 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageSquare } from 'lucide-react';
+import ChatMessageBubble from './ChatMessageBubble';
 
 interface ConversationSummaryProps {
   summary?: string;
   description?: string;
 }
 
+type ParsedLine =
+  | { role: 'agent' | 'client'; time?: string; name?: string; message: string }
+  | { role: 'system'; message: string; time?: string };
+
+/**
+ * Tenta identificar timestamp [HH:MM]
+ */
+function extractTime(line: string) {
+  const m = line.match(/\[(\d{2}:\d{2})\]/);
+  return m ? m[1] : undefined;
+}
+
+/**
+ * Normaliza a linha removendo timestamp inicial
+ */
+function stripTime(line: string) {
+  return line.replace(/^\s*\[\d{2}:\d{2}\]\s*/, '').trim();
+}
+
+/**
+ * Detecta papel por keywords/emoji e extrai nome/mensagem
+ * Aceita padrões do webhook como:
+ * [20:34] 🧑‍💼 Atendente Diego: mensagem
+ * [20:34] 🧑‍💼 Diego Bortoli: mensagem
+ * [20:34] 👤 Cliente João: mensagem
+ * [20:34] 👤 João: mensagem
+ */
+function parseLine(raw: string): ParsedLine {
+  const time = extractTime(raw);
+  const line = stripTime(raw);
+
+  const lower = line.toLowerCase();
+
+  const isAgent =
+    line.includes('🧑‍💼') ||
+    lower.includes('atendente ');
+  const isClient =
+    line.includes('👤') ||
+    lower.includes('cliente ');
+
+  // Regex ampla: (emoji|rótulo) nome: mensagem
+  const contentMatch =
+    line.match(/(?:🧑‍💼|👤|Atendente|Cliente)\s*([^:]+):\s*(.*)$/i) ||
+    line.match(/^([^:]+):\s*(.*)$/); // fallback "Nome: mensagem"
+
+  if (isAgent || isClient) {
+    const role = isAgent ? 'agent' : 'client';
+    if (contentMatch) {
+      const name = (contentMatch[1] || '').trim();
+      const message = (contentMatch[2] || '').trim();
+      return { role, time, name, message };
+    }
+    return { role, time, name: undefined, message: line };
+  }
+
+  // Sem agente/cliente detectado -> mensagem de sistema
+  // Se houver apenas uma palavra curta (ex.: "ok", "boa tarde"), ainda exibe como system
+  return { role: 'system', time, message: line || raw };
+}
+
 export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
-  // Função para formatar mensagens com destaque visual
-  const formatDescription = (text: string) => {
+  const renderDescription = (text: string) => {
     if (!text) return null;
-    
-    const lines = text.split('\n');
-    return lines.map((line, index) => {
-      // Detectar se é mensagem do atendente ou cliente
-      const isAgent = line.includes('🧑‍💼 Atendente');
-      const isClient = line.includes('👤 Cliente');
-      
-      if (isAgent || isClient) {
-        // Extrair timestamp, label e conteúdo
-        const timestampMatch = line.match(/\[(\d{2}:\d{2})\]/);
-        const timestamp = timestampMatch ? timestampMatch[1] : '';
-        
-        // Extrair nome e mensagem
-        const contentMatch = line.match(/(?:🧑‍💼 Atendente|👤 Cliente)\s+([^:]+):\s*(.+)/);
-        const name = contentMatch ? contentMatch[1].trim() : '';
-        const message = contentMatch ? contentMatch[2].trim() : line;
-        
+    const lines = text.split('\n').filter((l) => l.trim().length > 0);
+
+    return lines.map((line, idx) => {
+      const parsed = parseLine(line);
+
+      if (parsed.role === 'agent' || parsed.role === 'client') {
         return (
-          <div 
-            key={index} 
-            className={`mb-2 p-2 rounded-lg ${
-              isAgent 
-                ? 'bg-blue-50 dark:bg-blue-950/20 border-l-2 border-blue-500' 
-                : 'bg-green-50 dark:bg-green-950/20 border-l-2 border-green-500'
-            }`}
-          >
-            <div className="flex items-start gap-2">
-              <span className="text-xs text-muted-foreground">{timestamp}</span>
-              <span className={`text-xs font-semibold ${
-                isAgent ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'
-              }`}>
-                {isAgent ? '🧑‍💼' : '👤'} {name}
-              </span>
-            </div>
-            <p className="text-sm mt-1 ml-12">{message}</p>
-          </div>
+          <ChatMessageBubble
+            key={idx}
+            role={parsed.role}
+            time={parsed.time}
+            name={parsed.name}
+            message={parsed.message}
+          />
         );
       }
-      
-      // Linha sem formatação especial
+
+      // system
       return (
-        <p key={index} className="text-xs text-muted-foreground mb-1">
-          {line}
-        </p>
+        <ChatMessageBubble
+          key={idx}
+          role="system"
+          time={parsed.time}
+          message={parsed.message}
+        />
       );
     });
   };
@@ -76,15 +117,15 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
             Nenhum resumo disponível ainda. Clique em "Analisar com IA" para gerar.
           </p>
         )}
-        
+
         {description && (
           <details className="mt-4">
             <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
               Ver conversa completa
             </summary>
             <div className="mt-2 p-3 bg-muted/30 rounded-lg max-h-[400px] overflow-y-auto">
-              <div className="space-y-1">
-                {formatDescription(description)}
+              <div className="space-y-2">
+                {renderDescription(description)}
               </div>
             </div>
           </details>
