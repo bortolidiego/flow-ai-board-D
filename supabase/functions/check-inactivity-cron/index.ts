@@ -50,11 +50,24 @@ serve(async (req) => {
 
       console.log(`Found ${inactivityRules.length} inactivity rules`);
 
-      // Buscar cards do pipeline
+      // Buscar columns do pipeline
+      const { data: columns } = await supabase
+        .from('columns')
+        .select('id')
+        .eq('pipeline_id', pipeline.id);
+
+      if (!columns || columns.length === 0) {
+        console.log('No columns for this pipeline, skipping');
+        continue;
+      }
+
+      const columnIds = columns.map((c: any) => c.id);
+
+      // Buscar cards do pipeline via column_ids
       const { data: cards } = await supabase
         .from('cards')
         .select('id, column_id, funnel_type, last_activity_at, created_at, resolution_status, lifecycle_progress_percent, value')
-        .eq('pipeline_id', pipeline.id)
+        .in('column_id', columnIds)
         .is('resolution_status', null); // Apenas cards não resolvidos
 
       if (!cards || cards.length === 0) {

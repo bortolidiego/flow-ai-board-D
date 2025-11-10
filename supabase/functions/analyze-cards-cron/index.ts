@@ -56,7 +56,8 @@ serve(async (req) => {
         console.log(`Analyzing card ${card.id}...`);
         
         const { data, error: analysisError } = await supabase.functions.invoke('analyze-conversation', {
-          body: { cardId: card.id }
+          body: { cardId: card.id },
+          headers: { Authorization: `Bearer ${supabaseKey}` }
         });
 
         if (analysisError) {
