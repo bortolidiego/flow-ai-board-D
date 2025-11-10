@@ -57,6 +57,14 @@ function sanitizeHTML(input: string): string {
   return sanitized;
 }
 
+// Create a simple signature to deduplicate messages
+function computeSignature(conversationId: string | undefined, senderName: string | undefined | null, messageType: string | undefined, content: string | undefined) {
+  const norm = (s: any) => (s || "").toString().trim().toLowerCase().replace(/\s+/g, " ").slice(0, 300);
+  const key = `${norm(conversationId)}|${norm(senderName)}|${norm(messageType)}|${norm(content)}`;
+  // Keep signature small
+  return key.slice(0, 200);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -171,7 +179,7 @@ serve(async (req) => {
       const result = await supabase
         .from("cards")
         .select(
-          "id, description, priority, assignee, chatwoot_contact_name, chatwoot_contact_email, chatwoot_agent_name, updated_at, completion_type, customer_profile_id"
+          "id, description, priority, assignee, chatwoot_contact_name, chatwoot_contact_email, chatwoot_agent_name, updated_at, completion_type, customer_profile_id, custom_fields_data"
         )
         .eq("chatwoot_conversation_id", conversation.id.toString())
         .is("completion_type", null)
@@ -209,12 +217,11 @@ serve(async (req) => {
       if (existingCard && ["message_created", "message_updated"].includes(event)) {
         console.log(`Processing ${event} for conversation:`, conversation.id);
 
-        const lastUpdate = new Date(existingCard.updated_at || 0);
-        const timeSinceUpdate = Date.now() - lastUpdate.getTime();
-        const lastMessageContent = existingCard.description?.split("\n").pop() || "";
-        const contentPreview = content?.substring(0, 100) || "";
-        if (timeSinceUpdate < 5000 && lastMessageContent.includes(contentPreview)) {
-          console.log("Duplicate recent update detected, skipping");
+        // Robust deduplication using a persisted signature of the message
+        const signature = computeSignature(conversation?.id?.toString(), sender?.name, message_type, content);
+        const sigs = (existingCard.custom_fields_data?.chatwoot_msg_sigs as string[]) || [];
+        if (signature && sigs.includes(signature)) {
+          console.log("Duplicate message detected by signature, skipping");
           return new Response(JSON.stringify({ message: "Duplicate event ignored" }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -255,6 +262,9 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         };
         if (isAgent && sender?.name) updateData.chatwoot_agent_name = sender.name;
+        // Update message signature registry to avoid future duplicates
+        const newSigs = [...sigs, signature].slice(-20);
+        updateData.custom_fields_data = { ...(existingCard.custom_fields_data || {}), chatwoot_msg_sigs: newSigs };
 
         const { error: updateError } = await supabase.from("cards").update(updateData).eq("id", existingCard.id);
         if (updateError) {
@@ -371,6 +381,7 @@ serve(async (req) => {
     const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
     const senderName = sender?.name || (isAgent ? "Atendente" : "Cliente");
     const initialMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova conversa iniciada"}`;
+    const initialSignature = computeSignature(conversation?.id?.toString(), sender?.name, message_type, content);
 
     const cardData: any = {
       column_id: firstColumn.id,
@@ -385,6 +396,7 @@ serve(async (req) => {
       inbox_name: conversation?.inbox?.name,
       position: 0,
       customer_profile_id: customerProfileId,
+      custom_fields_data: { chatwoot_msg_sigs: initialSignature ? [initialSignature] : [] },
     };
     if (conversation?.assignee?.name) cardData.chatwoot_agent_name = conversation.assignee.name;
 
