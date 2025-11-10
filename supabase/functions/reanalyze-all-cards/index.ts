@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
@@ -25,7 +27,8 @@ serve(async (req) => {
       );
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       console.error('Authentication error:', authError);
       return new Response(
@@ -35,15 +38,21 @@ serve(async (req) => {
     }
 
     const { pipelineId } = await req.json();
+    if (!pipelineId) {
+      return new Response(
+        JSON.stringify({ error: 'pipelineId is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Verify pipeline ownership
-    const { data: pipeline, error: pipelineError } = await supabase
+    // Fetch pipeline and workspace
+    const { data: pipelineRow, error: pipelineError } = await supabase
       .from('pipelines')
-      .select('created_by')
+      .select('id, workspace_id')
       .eq('id', pipelineId)
       .single();
 
-    if (pipelineError || !pipeline) {
+    if (pipelineError || !pipelineRow) {
       console.error('Pipeline error:', pipelineError);
       return new Response(
         JSON.stringify({ error: 'Pipeline not found' }),
@@ -51,28 +60,33 @@ serve(async (req) => {
       );
     }
 
-    if (pipeline.created_by !== user.id) {
+    // Verify workspace membership
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('id')
+      .eq('workspace_id', pipelineRow.workspace_id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (membershipError || !membership) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: You do not own this pipeline' }),
+        JSON.stringify({ error: 'Forbidden: You are not a member of this workspace' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Starting reanalysis of all cards for pipeline:', pipelineId);
+    console.log('Starting reanalysis of all cards for pipeline:', pipelineId, 'by user:', user.id);
 
-    // Get all cards for the specified pipeline
+    // Get all cards for the specified pipeline (joining columns -> pipelines)
     let query = supabase
       .from('cards')
       .select(`
-        id, 
-        title, 
+        id,
+        title,
         column_id,
         columns!inner(pipeline_id)
-      `);
-
-    if (pipelineId) {
-      query = query.eq('columns.pipeline_id', pipelineId);
-    }
+      `)
+      .eq('columns.pipeline_id', pipelineId);
 
     const { data: cardsToAnalyze, error: fetchError } = await query;
 
@@ -86,9 +100,9 @@ serve(async (req) => {
 
     if (!cardsToAnalyze || cardsToAnalyze.length === 0) {
       console.log('No cards found to reanalyze');
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         message: 'No cards to reanalyze',
-        processed: 0 
+        processed: 0,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -98,45 +112,46 @@ serve(async (req) => {
 
     // Analyze cards in batches to avoid timeouts
     const batchSize = 5;
-    const results = [];
-    
+    const results: Array<{ cardId: string; title: string; status: 'success' | 'error'; error?: string }> = [];
+
     for (let i = 0; i < cardsToAnalyze.length; i += batchSize) {
       const batch = cardsToAnalyze.slice(i, i + batchSize);
-      
+
       for (const card of batch) {
         try {
           console.log(`Reanalyzing card ${card.id} (${i + batch.indexOf(card) + 1}/${cardsToAnalyze.length})...`);
-          
+
           const { data, error: analysisError } = await supabase.functions.invoke('analyze-conversation', {
-            body: { cardId: card.id }
+            body: { cardId: card.id },
+            headers: { Authorization: `Bearer ${token}` },
           });
 
           if (analysisError) {
             console.error(`Error analyzing card ${card.id}:`, analysisError);
-            results.push({ 
-              cardId: card.id, 
+            results.push({
+              cardId: card.id,
               title: card.title,
-              status: 'error', 
-              error: analysisError.message 
+              status: 'error',
+              error: analysisError.message,
             });
           } else {
             console.log(`Successfully reanalyzed card ${card.id}`);
-            results.push({ 
-              cardId: card.id, 
+            results.push({
+              cardId: card.id,
               title: card.title,
-              status: 'success' 
+              status: 'success',
             });
           }
 
           // Add delay between requests to respect rate limits
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         } catch (error) {
           console.error(`Failed to analyze card ${card.id}:`, error);
-          results.push({ 
+          results.push({
             cardId: card.id,
-            title: card.title, 
-            status: 'error', 
-            error: error instanceof Error ? error.message : 'Unknown error' 
+            title: card.title,
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error',
           });
         }
       }
@@ -144,30 +159,29 @@ serve(async (req) => {
       // Longer delay between batches
       if (i + batchSize < cardsToAnalyze.length) {
         console.log(`Completed batch ${Math.floor(i / batchSize) + 1}, pausing before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
 
-    const successCount = results.filter(r => r.status === 'success').length;
-    const errorCount = results.filter(r => r.status === 'error').length;
-    
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const errorCount = results.filter((r) => r.status === 'error').length;
+
     console.log(`Reanalysis completed: ${successCount} successful, ${errorCount} errors`);
 
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       message: 'Reanalysis completed',
       total: results.length,
       successful: successCount,
       errors: errorCount,
-      results 
+      results,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-
   } catch (error) {
     console.error('Error in reanalyze-all-cards:', error);
     return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
       }),
       {
         status: 500,
