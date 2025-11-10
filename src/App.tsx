@@ -13,6 +13,7 @@ import Auth from "./pages/Auth";
 import AcceptInvite from "./pages/AcceptInvite";
 import Changelog from "./pages/Changelog";
 import NotFound from "./pages/NotFound";
+import ProvisionWrapper from "@/components/ProvisionWrapper";
 
 const queryClient = new QueryClient();
 
@@ -25,7 +26,6 @@ const App = () => (
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
-          <Route path="/provision" element={<AppLayout><ProtectedRoute requireAdmin={false}>{/* rota pública intencional */}</ProtectedRoute></AppLayout>} />
           <Route 
             path="/" 
             element={
