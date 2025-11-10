@@ -1,9 +1,12 @@
+// @ts-nocheck
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS'
 };
 
 interface SLAStatus {
@@ -14,6 +17,7 @@ interface SLAStatus {
 }
 
 serve(async (req) => {
+  // Preflight CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -49,7 +53,10 @@ serve(async (req) => {
       .single();
 
     if (!card) {
-      throw new Error('Card not found');
+      return new Response(
+        JSON.stringify({ error: 'Card not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Se card está finalizado, SLA não se aplica
@@ -143,7 +150,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Error calculating SLA:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message || 'Unexpected error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
