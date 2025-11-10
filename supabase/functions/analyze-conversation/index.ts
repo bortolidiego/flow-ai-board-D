@@ -286,7 +286,12 @@ serve(async (req) => {
     ]);
 
     // Use default values if no config exists
-    const modelName = aiConfig?.model_name || 'google/gemini-2.5-flash-lite';
+    let modelName = aiConfig?.model_name || null;
+    if (!modelName) {
+      // Prefer OpenAI by default if key exists; otherwise use Gemini via Lovable
+      const openaiDefaultKey = Deno.env.get('OPENAI_API_KEY');
+      modelName = openaiDefaultKey ? 'openai/gpt-4o-mini' : 'google/gemini-2.5-flash-lite';
+    }
     // Detect provider from model string (e.g., "openai/gpt-4o-mini" or "google/gemini-2.5-flash-lite")
     const [providerPrefix, rawModelId] = modelName.includes('/') ? modelName.split('/') : ['google', modelName];
     const provider = providerPrefix.toLowerCase();
@@ -670,7 +675,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       lead_data_snapshot: currentLeadData || {},
       trigger_source: 'manual', // ou 'message', 'close', 'cron' dependendo do contexto
       conversation_length: messageCount,
-      model_used: usingFallback ? 'gpt-5-nano-2025-08-07' : modelName
+      model_used: usingFallback ? 'openai/gpt-4o-mini' : modelName
     };
 
     const { error: historyError } = await supabase
@@ -950,7 +955,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       console.log('No custom rules triggered, applying default intelligent rules');
       
       // Lógica padrão de movimentação baseada na análise
-      const intentionScore = analysis.intention_analysis.score;
+      const intentionScore = analysis.funnel_analysis?.score ?? 0;
       const conversationStatus = analysis.conversation_status;
       
       // Se negócio fechado (ganho), mover para última coluna
