@@ -287,8 +287,11 @@ serve(async (req) => {
 
     // Use default values if no config exists
     const modelName = aiConfig?.model_name || 'google/gemini-2.5-flash-lite';
-    const systemPrompt = aiConfig?.use_custom_prompt && aiConfig?.custom_prompt 
-      ? aiConfig.custom_prompt 
+    // Detect provider from model string (e.g., "openai/gpt-4o-mini" or "google/gemini-2.5-flash-lite")
+    const [providerPrefix, rawModelId] = modelName.includes('/') ? modelName.split('/') : ['google', modelName];
+    const provider = providerPrefix.toLowerCase();
+    const systemPrompt = aiConfig?.use_custom_prompt && aiConfig?.custom_prompt
+      ? aiConfig.custom_prompt
       : aiConfig?.generated_prompt || 'Você é um assistente de análise de conversas. Analise a conversa e extraia informações estruturadas.';
 
     const funnelTypes = funnelConfigs?.map((fc: any) => fc.funnel_type) || ['compra', 'suporte', 'informação'];
@@ -334,71 +337,19 @@ As mensagens na conversa seguem este formato:
 - Analise TODA a conversa, não apenas partes dela
 - Avalie o contexto completo para scores e classificações`;
 
-    // Análise completa via Lovable AI com schema dinâmico, com fallback para OpenAI
+    // Roteamento por provedor com schema dinâmico
     let response: Response;
     let usingFallback = false;
-    
-    try {
-      console.log('Attempting analysis with Lovable AI...');
-      response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${lovableApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [
-            {
-              role: 'system',
-              content: `${systemPrompt}${formatInstructions}
 
-IMPORTANTE:
-- Avalie a conversa COMPLETA, desde o início até o momento atual, não apenas trechos ou o início
-- Para qualidade de atendimento: considere toda a interação, tempo de resposta, resolução de problemas
-- Para funil: analise a evolução da conversa e identifique o funil ATUAL do cliente
-
-Tipos de funil disponíveis (escolha APENAS UM): ${funnelLabels.join(', ')}${lifecycleInfo}
-
-Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conversa está atualmente baseada no contexto, estimar o progresso percentual (0-100%) considerando toda a jornada, e marcar como terminal se a conversa chegou a uma resolução final.`
-            },
-            {
-              role: 'user',
-              content: conversationText
-            }
-          ],
-          tools: [
-            {
-              type: 'function',
-              function: functionSchema
-            }
-          ],
-          tool_choice: { type: 'function', function: { name: 'analyze_conversation' } }
-        }),
-      });
-
-      // Se Lovable AI retornar 402 (sem créditos), usar fallback OpenAI
-      if (response.status === 402) {
-        throw new Error('Lovable AI: Payment required');
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Lovable AI error:', response.status, errorText);
-        throw new Error(`Lovable AI error: ${response.status}`);
-      }
-    } catch (lovableError) {
-      console.warn('Lovable AI failed, attempting OpenAI fallback:', lovableError);
-      
+    if (provider === 'openai') {
       const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
       if (!openaiApiKey) {
-        console.error('OpenAI API key not configured');
-        throw new Error('Both Lovable AI and OpenAI fallback failed. OpenAI key not configured.');
+        throw new Error('OpenAI API key not configured');
       }
 
-      usingFallback = true;
-      console.log('Using OpenAI fallback with model: gpt-5-nano-2025-08-07');
-      
+      const openaiModel = rawModelId; // ex.: gpt-4o-mini, gpt-4o, o3-mini
+      console.log('Analyzing with OpenAI model:', openaiModel);
+
       response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -406,7 +357,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-5-nano-2025-08-07',
+          model: openaiModel,
           messages: [
             {
               role: 'system',
@@ -441,6 +392,155 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
         const errorText = await response.text();
         console.error('OpenAI API error:', response.status, errorText);
         throw new Error(`OpenAI API error: ${response.status}`);
+      }
+    } else {
+      // Usar Lovable para modelos Google/Gemini, com fallback para OpenAI se necessário
+      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+      if (!lovableApiKey) {
+        console.warn('LOVABLE_API_KEY não configurada, caindo para OpenAI automaticamente.');
+        const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+        if (!openaiApiKey) {
+          throw new Error('Neither Lovable nor OpenAI keys are configured');
+        }
+        usingFallback = true;
+        response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `${systemPrompt}${formatInstructions}
+
+IMPORTANTE:
+- Avalie a conversa COMPLETA, desde o início até o momento atual, não apenas trechos ou o início
+- Para qualidade de atendimento: considere toda a interação, tempo de resposta, resolução de problemas
+- Para funil: analise a evolução da conversa e identifique o funil ATUAL do cliente
+
+Tipos de funil disponíveis (escolha APENAS UM): ${funnelLabels.join(', ')}${lifecycleInfo}
+
+Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conversa está atualmente baseada no contexto, estimar o progresso percentual (0-100%) considerando toda a jornada, e marcar como terminal se a conversa chegou a uma resolução final.`
+              },
+              {
+                role: 'user',
+                content: conversationText
+              }
+            ],
+            tools: [
+              {
+                type: 'function',
+                function: functionSchema
+              }
+            ],
+            tool_choice: { type: 'function', function: { name: 'analyze_conversation' } },
+            max_completion_tokens: 2000
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('OpenAI API error:', response.status, errorText);
+          throw new Error(`OpenAI API error: ${response.status}`);
+        }
+      } else {
+        console.log('Attempting analysis with Lovable AI model:', modelName);
+        response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${lovableApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages: [
+              {
+                role: 'system',
+                content: `${systemPrompt}${formatInstructions}
+
+IMPORTANTE:
+- Avalie a conversa COMPLETA, desde o início até o momento atual, não apenas trechos ou o início
+- Para qualidade de atendimento: considere toda a interação, tempo de resposta, resolução de problemas
+- Para funil: analise a evolução da conversa e identifique o funil ATUAL do cliente
+
+Tipos de funil disponíveis (escolha APENAS UM): ${funnelLabels.join(', ')}${lifecycleInfo}
+
+Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conversa está atualmente baseada no contexto, estimar o progresso percentual (0-100%) considerando toda a jornada, e marcar como terminal se a conversa chegou a uma resolução final.`
+              },
+              {
+                role: 'user',
+                content: conversationText
+              }
+            ],
+            tools: [
+              {
+                type: 'function',
+                function: functionSchema
+              }
+            ],
+            tool_choice: { type: 'function', function: { name: 'analyze_conversation' } }
+          }),
+        });
+
+        // Fallback para OpenAI quando 402 (sem créditos)
+        if (response.status === 402) {
+          console.warn('Lovable AI: sem créditos (402). Falling back to OpenAI.');
+          const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+          if (!openaiApiKey) {
+            throw new Error('OpenAI API key not configured for fallback');
+          }
+          usingFallback = true;
+          response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                {
+                  role: 'system',
+                  content: `${systemPrompt}${formatInstructions}
+
+IMPORTANTE:
+- Avalie a conversa COMPLETA, desde o início até o momento atual, não apenas trechos ou o início
+- Para qualidade de atendimento: considere toda a interação, tempo de resposta, resolução de problemas
+- Para funil: analise a evolução da conversa e identifique o funil ATUAL do cliente
+
+Tipos de funil disponíveis (escolha APENAS UM): ${funnelLabels.join(', ')}${lifecycleInfo}
+
+Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conversa está atualmente baseada no contexto, estimar o progresso percentual (0-100%) considerando toda a jornada, e marcar como terminal se a conversa chegou a uma resolução final.`
+                },
+                {
+                  role: 'user',
+                  content: conversationText
+                }
+              ],
+              tools: [
+                {
+                  type: 'function',
+                  function: functionSchema
+                }
+              ],
+              tool_choice: { type: 'function', function: { name: 'analyze_conversation' } },
+              max_completion_tokens: 2000
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('OpenAI API error:', response.status, errorText);
+            throw new Error(`OpenAI API error: ${response.status}`);
+          }
+        } else if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Lovable AI error:', response.status, errorText);
+          throw new Error(`Lovable AI error: ${response.status}`);
+        }
       }
     }
 
