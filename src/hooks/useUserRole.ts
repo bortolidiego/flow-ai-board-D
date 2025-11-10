@@ -22,18 +22,18 @@ export function useUserRole() {
 
         setUserId(user.id);
 
-        // Buscar role do usuário
-        const { data: userRoles, error } = await supabase
+        // Buscar todas as roles do usuário e decidir a principal
+        const { data: roles, error } = await supabase
           .from('user_roles')
           .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
+          .eq('user_id', user.id);
 
         if (error) {
           console.error('Error fetching user role:', error);
           setRole('user'); // Default para user se houver erro
-        } else if (userRoles) {
-          setRole(userRoles.role as AppRole);
+        } else if (roles && roles.length > 0) {
+          const hasAdmin = roles.some((r: any) => r.role === 'admin');
+          setRole(hasAdmin ? 'admin' : 'user');
         } else {
           // Se não tem role, criar como user
           const { error: insertError } = await supabase

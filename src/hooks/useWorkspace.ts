@@ -30,12 +30,11 @@ export function useWorkspace() {
           return;
         }
 
-        // Buscar workspace do usuário via workspace_members
-        const { data: memberData, error: memberError } = await supabase
+        // Buscar workspaces do usuário via workspace_members (pode haver 0 ou mais)
+        const { data: memberships, error: memberError } = await supabase
           .from('workspace_members')
           .select('workspace_id, workspaces(*)')
-          .eq('user_id', user.id)
-          .single();
+          .eq('user_id', user.id);
 
         if (memberError) {
           console.error('Error fetching workspace:', memberError);
@@ -43,18 +42,23 @@ export function useWorkspace() {
           return;
         }
 
-        if (memberData?.workspaces) {
-          setWorkspace(memberData.workspaces as unknown as Workspace);
+        const firstMembership = (memberships || [])[0];
+        if (firstMembership?.workspaces) {
+          setWorkspace(firstMembership.workspaces as unknown as Workspace);
 
-          // Buscar todos os membros do workspace
-          const { data: membersData } = await supabase
+          // Buscar todos os membros do workspace selecionado
+          const { data: allMembers } = await supabase
             .from('workspace_members')
             .select('*')
-            .eq('workspace_id', memberData.workspace_id);
+            .eq('workspace_id', firstMembership.workspace_id);
 
-          if (membersData) {
-            setMembers(membersData);
+          if (allMembers) {
+            setMembers(allMembers);
           }
+        } else {
+          // Sem vínculos: limpar estado
+          setWorkspace(null);
+          setMembers([]);
         }
       } catch (error) {
         console.error('Error in useWorkspace:', error);
