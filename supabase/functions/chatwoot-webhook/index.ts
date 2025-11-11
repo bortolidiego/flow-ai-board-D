@@ -168,6 +168,24 @@ function isFileAttachment(att: any): boolean {
   return !!ct && !(isAudio || isImage);
 }
 
+// Extrai URLs do conteúdo (HTML/texto) para capturar áudios que não vêm em attachments
+function extractUrlsFromContent(raw?: string | null, text?: string | null): string[] {
+  const urls = new Set<string>();
+  const pushMatches = (s?: string | null) => {
+    if (!s) return;
+    try {
+      const regex = /https?:\/\/[^\s)]+/g;
+      const matches = s.match(regex) || [];
+      matches.forEach((u) => urls.add(u));
+    } catch {
+      // ignora erros de regex
+    }
+  };
+  pushMatches(raw);
+  pushMatches(text);
+  return Array.from(urls);
+}
+
 function renderDescriptionFromLog(log: any[]): string {
   // Gera descrição legível a partir do log de mensagens
   const lines: string[] = [];
@@ -333,7 +351,20 @@ serve(async (req) => {
     const chatSender = buildSender(effectiveSender?.type, derivedMessageType);
     const timestamp = normalizeTimestamp(message?.created_at ?? conversation?.created_at ?? null);
     const messageId = message?.id?.toString();
-    const attachments = (message?.attachments || []) as any[];
+
+    // Considera anexos enviados em message.attachments e também URLs dentro do conteúdo
+    const baseAttachments = (message?.attachments || []) as any[];
+    const contentUrls = extractUrlsFromContent(message?.content ?? rawContent, contentText);
+    const attachments = [
+      ...baseAttachments,
+      ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
+    ] as any[];
+
+    console.log("Anexos detectados para processamento", {
+      baseCount: baseAttachments.length,
+      contentUrlCount: contentUrls.length,
+      total: (attachments || []).length,
+    });
 
     // Dedup estrito por message.id
     const existingLog = (existingCard?.custom_fields_data?.chatwoot_messages as any[]) || [];
