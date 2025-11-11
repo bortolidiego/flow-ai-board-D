@@ -117,6 +117,7 @@ async function fetchAudio(url: string, apiKey?: string | null) {
     }
   }
 
+  console.error("❌ Todas as estratégias falharam. Último erro:", lastErrorText);
   throw new Error(`Falha ao baixar áudio (${lastErrorText || "desconhecido"})`);
 }
 

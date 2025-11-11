@@ -159,14 +159,28 @@ class TextUtils {
   }
 
   static normalizeUrl(u: string, base?: string | null): string {
-    if (!u) return u;
-    try {
-      if (u.startsWith("http://") || u.startsWith("https://")) return u;
-      if (base && u.startsWith("/")) {
-        return `${base}${u}`;
-      }
+    if (!u) {
+      console.log("❌ URL vazia em normalizeUrl");
       return u;
-    } catch {
+    }
+    try {
+      console.log("🔗 Normalizando URL:", { url: u, base });
+      
+      if (u.startsWith("http://") || u.startsWith("https://")) {
+        console.log("✅ URL já é absoluta:", u);
+        return u;
+      }
+      
+      if (base && u.startsWith("/")) {
+        const normalized = `${base}${u}`;
+        console.log("✅ URL normalizada (relativa + base):", { original: u, normalized });
+        return normalized;
+      }
+      
+      console.log("ℹ️ URL não precisa de normalização:", u);
+      return u;
+    } catch (e) {
+      console.error("❌ Erro em normalizeUrl:", e);
       return u;
     }
   }
@@ -315,19 +329,44 @@ class AttachmentProcessor {
   ];
 
   private static attachmentUrl(att: Attachment): string | undefined {
-    return att?.url || att?.data_url || att?.download_url || att?.file_url || undefined;
+    const url = att?.url || att?.data_url || att?.download_url || att?.file_url || undefined;
+    console.log("🔗 Extraindo URL do anexo:", {
+      id: att?.id,
+      url: att?.url,
+      data_url: att?.data_url,
+      download_url: att?.download_url,
+      file_url: att?.file_url,
+      final: url
+    });
+    return url;
   }
 
   private static isAudioUrlByExtension(url?: string | null): boolean {
-    if (!url) return false;
+    if (!url) {
+      console.log("❌ URL vazia em isAudioUrlByExtension");
+      return false;
+    }
     try {
       const lower = url.toLowerCase();
-      const hasAudioExtension = this.AUDIO_EXTENSIONS.some((ext) => lower.includes(ext));
+      console.log("🔍 Verificando extensões na URL:", { url, lower });
+      
+      const hasAudioExtension = this.AUDIO_EXTENSIONS.some((ext) => {
+        const found = lower.includes(ext);
+        if (found) {
+          console.log("✅ Extensão de áudio encontrada:", ext);
+        }
+        return found;
+      });
+      
       if (hasAudioExtension) {
         console.log("✅ URL detectada como áudio por extensão:", url);
+      } else {
+        console.log("❌ Nenhuma extensão de áudio encontrada em:", url);
+        console.log("📋 Extensões verificadas:", this.AUDIO_EXTENSIONS);
       }
       return hasAudioExtension;
-    } catch {
+    } catch (e) {
+      console.error("❌ Erro em isAudioUrlByExtension:", e);
       return false;
     }
   }
@@ -337,10 +376,13 @@ class AttachmentProcessor {
     const url = this.attachmentUrl(att);
     
     console.log("🔍 Verificando anexo:", {
+      id: att?.id,
       content_type: ct,
       file_type: att?.file_type,
       url,
-      filename: att?.filename
+      filename: att?.filename,
+      data_url: att?.data_url,
+      download_url: att?.download_url
     });
     
     // Verifica content_type
@@ -356,13 +398,17 @@ class AttachmentProcessor {
     // Application/octet-stream pode ser áudio
     if (ct === "application/octet-stream") {
       console.log("⚠️ Content-type genérico, verificando extensão:", url);
-      return this.isAudioUrlByExtension(url);
+      const isAudioByUrl = this.isAudioUrlByExtension(url);
+      console.log("📊 Resultado verificação extensão:", isAudioByUrl);
+      return isAudioByUrl;
     }
     
     // Verifica extensão da URL
     const isAudioByUrl = this.isAudioUrlByExtension(url);
     if (isAudioByUrl) {
       console.log("✅ Anexo detectado como áudio por extensão da URL:", url);
+    } else {
+      console.log("❌ Anexo NÃO detectado como áudio:", { ct, url });
     }
     
     return isAudioByUrl;
@@ -648,9 +694,11 @@ class WebhookHandler {
           file_type: att?.file_type,
           filename: att?.filename
         });
+        const normalizedUrl = rawUrl ? TextUtils.normalizeUrl(rawUrl, integration.chatwoot_url) : undefined;
+        console.log("🔗 URL normalizada:", { original: rawUrl, normalized: normalizedUrl });
         return {
           id: att?.id,
-          url: rawUrl ? TextUtils.normalizeUrl(rawUrl, integration.chatwoot_url) : undefined,
+          url: normalizedUrl,
           content_type: att?.content_type || null,
           file_type: att?.file_type || null,
           filename: att?.filename || null,
@@ -659,6 +707,7 @@ class WebhookHandler {
       
       console.log("✅ Anexos base processados:", attachments.length);
       if (attachments.length > 0) {
+        console.log("📋 Anexos base finais:", JSON.stringify(attachments, null, 2));
         return attachments;
       }
     }
@@ -934,10 +983,11 @@ class WebhookHandler {
       console.log("📨 Webhook recebido - Conversation:", JSON.stringify(rawWebhook.conversation, null, 2));
       
       const webhook = ChatwootWebhookSchema.parse(rawWebhook);
-      const { event, conversation, account } = webhook;
+      const { event, conversation, account, message } = webhook;
 
       // Early validation
       if (this.shouldIgnoreMessage(webhook)) {
+        console.log("🚫 Mensagem ignorada por shouldIgnoreMessage");
         return new Response(JSON.stringify({ message: "Mensagem ignorada" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -945,42 +995,53 @@ class WebhookHandler {
 
       const accountId = account?.id || conversation?.id;
       if (!accountId) {
+        console.log("❌ Sem account_id");
         return new Response(JSON.stringify({ error: "Sem account_id" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
+      console.log("🔍 Validando integração para account_id:", accountId);
       // Validate integration
       const integration = await this.validateIntegration(String(accountId));
       if (!integration) {
+        console.log("❌ Sem integração para esta conta");
         return new Response(JSON.stringify({ message: "Sem integração para esta conta" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (!integration.active) {
+        console.log("❌ Integração pausada");
         return new Response(JSON.stringify({ message: "Integração pausada" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (this.shouldIgnoreConversation(integration, conversation)) {
+        console.log("🚫 Conversa ignorada por filtro");
         return new Response(JSON.stringify({ message: "Conversa ignorada por filtro" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
+      console.log("✅ Integração válida, processando evento:", event);
+
       // Check for existing card
       let existingCard = null;
       if (["message_created", "message_updated", "conversation_updated"].includes(event) && conversation?.id) {
+        console.log("🔍 Procurando card existente para conversation_id:", conversation.id);
         existingCard = await CardManager.findExistingCard(this.supabase, conversation.id);
+        console.log("📋 Card existente encontrado:", !!existingCard);
       }
 
       // Route to appropriate handler
       if (existingCard) {
+        console.log("🔄 Enviando para handleExistingCard");
         return await this.handleExistingCard(webhook, integration, existingCard);
       } else {
+        console.log("🆕 Enviando para handleNewCard");
         return await this.handleNewCard(webhook, integration);
       }
 
