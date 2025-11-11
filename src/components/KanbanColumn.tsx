@@ -129,7 +129,7 @@ export const KanbanColumn = ({
                   "flex items-center gap-1 text-xs font-medium",
                   isMobile ? "text-sm" : "text-xs"
                 )}>
-                  <DollarSign className={cn("h-3 w-3", isMobile ? "h-4 w-4")} />
+                  <DollarSign className={cn("h-3 w-3", isMobile && "h-4 w-4")} />
                   <span className="text-green-600 dark:text-green-400">
                     {formatCurrency(columnTotal)}
                   </span>
