@@ -265,7 +265,12 @@ serve(async (req) => {
           }
         } else {
           const newMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova mensagem"}`;
-          updatedDescription = existingCard.description ? `${existingCard.description}\n${newMessage}` : newMessage;
+          if (existingCard.description && existingCard.description.includes(newMessage)) {
+            // Não reapende a mesma linha se já existe
+            updatedDescription = existingCard.description;
+          } else {
+            updatedDescription = existingCard.description ? `${existingCard.description}\n${newMessage}` : newMessage;
+          }
         }
 
         const allContent = updatedDescription.toLowerCase();
@@ -324,6 +329,35 @@ serve(async (req) => {
       console.warn("Event without account info - cannot create new card");
       return new Response(JSON.stringify({ error: "Account information required for new conversations" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Evitar duplicações: só cria cartão para eventos específicos e se não houver cartão ativo recente
+    if (!["conversation_created", "message_created"].includes(event)) {
+      console.log("Skipping card creation for event:", event);
+      return new Response(JSON.stringify({ message: "Event does not create cards" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (event === "message_created" && derivedMessageType !== "incoming") {
+      console.log("Skipping card creation for non-incoming message.");
+      return new Response(JSON.stringify({ message: "Only incoming messages can create a new card" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // Checar se há cartão ativo criado recentemente (últimos 2 minutos) para esta conversa
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    const { data: recentActiveCards } = await supabase
+      .from("cards")
+      .select("id, completion_type, created_at")
+      .eq("chatwoot_conversation_id", conversation?.id?.toString())
+      .is("completion_type", null)
+      .gt("created_at", twoMinutesAgo);
+
+    if (recentActiveCards && recentActiveCards.length > 0) {
+      console.log("Active card already created recently, skipping duplicate creation:", recentActiveCards[0]?.id);
+      return new Response(JSON.stringify({ message: "Duplicate creation prevented", cardId: recentActiveCards[0].id }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
