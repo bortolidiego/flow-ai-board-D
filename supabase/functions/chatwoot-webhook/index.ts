@@ -40,6 +40,7 @@ const ChatwootWebhookSchema = z.object({
       }).optional(),
     }).optional(),
     created_at: z.any().optional().nullable(),
+    account: z.object({ id: z.number() }).optional(),
   }).optional(),
   message_type: z.enum(["incoming", "outgoing"]).optional(),
   content: z.string().max(50000).optional().nullable(),
