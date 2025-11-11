@@ -1,5 +1,4 @@
 import React from "react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type Role = "agent" | "client" | "system";
@@ -11,6 +10,16 @@ interface ChatMessageBubbleProps {
   message: string;
 }
 
+function normalizeName(raw?: string) {
+  if (!raw) return undefined;
+  // Remove emojis/labels e espaços extras
+  return raw
+    .replace(/🧑‍💼|👤/g, "")
+    .replace(/\b(Atendente|Cliente)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   role,
   time,
@@ -20,6 +29,8 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   const isAgent = role === "agent";
   const isClient = role === "client";
   const isSystem = role === "system";
+
+  const cleanName = normalizeName(name);
 
   return (
     <div
@@ -36,32 +47,25 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
           isSystem && "bg-muted/40 border-muted"
         )}
       >
-        {!isSystem && (
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1">
-            {time && <span className="tabular-nums">{time}</span>}
-            <Badge
-              variant="secondary"
-              className={cn(
-                "h-5 px-2",
-                isAgent ? "bg-primary/20 text-primary" : "bg-secondary/20 text-secondary-foreground"
-              )}
-            >
-              {isAgent ? "Agente" : "Cliente"}
-            </Badge>
-            {name && (
-              <span className="font-semibold text-foreground leading-none">
-                {name}
-              </span>
-            )}
-          </div>
-        )}
         <div
           className={cn(
-            "text-sm leading-relaxed",
+            "text-sm leading-relaxed break-words",
             isSystem && "text-muted-foreground"
           )}
         >
-          {message || "(sem texto)"}
+          {time && (
+            <span className="mr-1 text-[11px] text-muted-foreground tabular-nums">
+              [{time}]
+            </span>
+          )}
+          {!isSystem && cleanName && (
+            <span className="font-semibold text-foreground">
+              {cleanName}:
+            </span>
+          )}
+          <span className={cn(!isSystem && cleanName ? "ml-1" : "")}>
+            {message || "(sem texto)"}
+          </span>
         </div>
       </div>
     </div>

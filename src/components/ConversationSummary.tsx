@@ -7,9 +7,16 @@ interface ConversationSummaryProps {
   description?: string;
 }
 
-type ParsedLine =
-  | { role: 'agent' | 'client'; time?: string; name?: string; message: string }
-  | { role: 'system'; message: string; time?: string };
+type Role = 'agent' | 'client' | 'system';
+type ParsedRole = Role | 'unknown';
+
+type ParsedLine = {
+  role: ParsedRole;
+  time?: string;
+  name?: string;
+  message?: string;
+  metaNameOnly?: boolean;
+};
 
 /**
  * Tenta identificar timestamp [HH:MM]
@@ -27,44 +34,81 @@ function stripTime(line: string) {
 }
 
 /**
+ * Limpa nome removendo emojis/labels e espaços extras
+ */
+function normalizeName(raw?: string) {
+  if (!raw) return undefined;
+  return raw
+    .replace(/🧑‍💼|👤/g, '')
+    .replace(/\b(Atendente|Cliente)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Detecta se a linha é claramente de sistema (eventos)
+ */
+function isSystemEvent(line: string) {
+  const lower = line.toLowerCase();
+  return (
+    /conversa.*encerrad/.test(lower) ||
+    /transferid/.test(lower) ||
+    /atribuíd|atribuid/.test(lower) ||
+    /fechad|closed/.test(lower) ||
+    /resolvid|finalizad/.test(lower)
+  );
+}
+
+/**
  * Detecta papel por keywords/emoji e extrai nome/mensagem
- * Aceita padrões do webhook como:
- * [20:34] 🧑‍💼 Atendente Diego: mensagem
- * [20:34] 🧑‍💼 Diego Bortoli: mensagem
- * [20:34] 👤 Cliente João: mensagem
+ * Aceita padrões:
+ * [20:34] 🧑‍💼 Diego: mensagem
  * [20:34] 👤 João: mensagem
+ * [20:34] Atendente Diego: mensagem
+ * [20:34] Cliente João: mensagem
+ * [20:34] Diego: mensagem
+ * [20:34] Diego:
  */
 function parseLine(raw: string): ParsedLine {
   const time = extractTime(raw);
   const line = stripTime(raw);
-
   const lower = line.toLowerCase();
+
+  // Eventos de sistema reais
+  if (isSystemEvent(line)) {
+    return { role: 'system', time, message: line };
+  }
 
   const isAgent =
     line.includes('🧑‍💼') ||
-    lower.includes('atendente ');
+    /\batendente\b/.test(lower);
   const isClient =
     line.includes('👤') ||
-    lower.includes('cliente ');
+    /\bcliente\b/.test(lower);
 
-  // Regex ampla: (emoji|rótulo) nome: mensagem
-  const contentMatch =
-    line.match(/(?:🧑‍💼|👤|Atendente|Cliente)\s*([^:]+):\s*(.*)$/i) ||
-    line.match(/^([^:]+):\s*(.*)$/); // fallback "Nome: mensagem"
+  // Regex ampla permitindo emojis/labels antes do nome
+  const withMessage =
+    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Cliente)?\s*([^:]+):\s*(.+)$/i);
+  const nameOnly =
+    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Cliente)?\s*([^:]+):\s*$/i);
 
-  if (isAgent || isClient) {
-    const role = isAgent ? 'agent' : 'client';
-    if (contentMatch) {
-      const name = (contentMatch[1] || '').trim();
-      const message = (contentMatch[2] || '').trim();
-      return { role, time, name, message };
-    }
-    return { role, time, name: undefined, message: line };
+  if (withMessage) {
+    const name = normalizeName((withMessage[1] || '').trim());
+    const message = (withMessage[2] || '').trim();
+    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
+    return { role, time, name, message };
   }
 
-  // Sem agente/cliente detectado -> mensagem de sistema
-  // Se houver apenas uma palavra curta (ex.: "ok", "boa tarde"), ainda exibe como system
-  return { role: 'system', time, message: line || raw };
+  if (nameOnly) {
+    const name = normalizeName((nameOnly[1] || '').trim());
+    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
+    // Metadado "Nome:" sem conteúdo — deve fundir com próxima linha
+    return { role, time, name, metaNameOnly: true };
+  }
+
+  // Sem padrão explícito — tratar como mensagem "solta"
+  // Papel será herdado pelo renderizador
+  return { role: 'unknown', time, message: line };
 }
 
 export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
@@ -72,31 +116,99 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
     if (!text) return null;
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
 
-    return lines.map((line, idx) => {
-      const parsed = parseLine(line);
+    const bubbles: Array<{
+      role: Role;
+      time?: string;
+      name?: string;
+      message: string;
+    }> = [];
 
-      if (parsed.role === 'agent' || parsed.role === 'client') {
-        return (
-          <ChatMessageBubble
-            key={idx}
-            role={parsed.role}
-            time={parsed.time}
-            name={parsed.name}
-            message={parsed.message}
-          />
-        );
+    let lastRole: Role = 'client';
+    let lastName: string | undefined;
+    let i = 0;
+
+    while (i < lines.length) {
+      const raw = lines[i];
+      const parsed = parseLine(raw);
+
+      // Fundir "Nome:" com próxima linha
+      if (parsed.metaNameOnly) {
+        // procurar próxima linha não vazia
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim().length === 0) j++;
+        if (j < lines.length) {
+          const nextParsed = parseLine(lines[j]);
+          const effectiveRole: Role =
+            nextParsed.role === 'unknown'
+              ? (parsed.role !== 'unknown' ? (parsed.role as Role) : lastRole)
+              : (nextParsed.role as Role);
+
+          const effectiveName =
+            normalizeName(nextParsed.name) ||
+            parsed.name ||
+            lastName;
+
+          const message = (nextParsed.message || '').trim();
+          if (message.length > 0) {
+            bubbles.push({
+              role: effectiveRole,
+              time: nextParsed.time || parsed.time,
+              name: effectiveName,
+              message,
+            });
+            lastRole = effectiveRole;
+            if (effectiveName) lastName = effectiveName;
+          }
+          i = j + 1;
+          continue;
+        } else {
+          // Não há próxima linha — ignorar metadado solto
+          i++;
+          continue;
+        }
       }
 
-      // system
-      return (
-        <ChatMessageBubble
-          key={idx}
-          role="system"
-          time={parsed.time}
-          message={parsed.message}
-        />
-      );
-    });
+      if (parsed.role === 'system') {
+        bubbles.push({
+          role: 'system',
+          time: parsed.time,
+          message: parsed.message || '',
+        });
+        i++;
+        continue;
+      }
+
+      // Mensagem comum — herdar papel/nome quando necessário
+      const effectiveRole: Role =
+        parsed.role === 'unknown' ? lastRole : (parsed.role as Role);
+
+      const effectiveName =
+        normalizeName(parsed.name) || lastName;
+
+      const message = (parsed.message || '').trim();
+      if (message.length > 0) {
+        bubbles.push({
+          role: effectiveRole,
+          time: parsed.time,
+          name: effectiveName,
+          message,
+        });
+        lastRole = effectiveRole;
+        if (effectiveName) lastName = effectiveName;
+      }
+
+      i++;
+    }
+
+    return bubbles.map((b, idx) => (
+      <ChatMessageBubble
+        key={idx}
+        role={b.role}
+        time={b.time}
+        name={b.name}
+        message={b.message}
+      />
+    ));
   };
 
   return (
