@@ -314,7 +314,8 @@ serve(async (req) => {
 
     // Dedup estrito por message.id
     const existingLog = (existingCard?.custom_fields_data?.chatwoot_messages as any[]) || [];
-    const alreadyHasMessage = existingLog.some((m) => m.id === messageId);
+    const processedMessageIds = new Set((existingCard?.custom_fields_data?.chatwoot_msg_ids as string[]) || []);
+    const alreadyHasMessage = messageId ? processedMessageIds.has(messageId) : false;
 
     // Se message_updated e não existe card: ignorar (será criado em message_created)
     if (!existingCard && event === "message_updated") {
@@ -371,10 +372,13 @@ serve(async (req) => {
         attachments: attachmentEntries,
       };
 
-      if (event === "message_updated") {
+      if (event === "message_updated" && alreadyHasMessage) {
         newLog = newLog.map((m) => (m.id === messageId ? entry : m));
       } else if (!alreadyHasMessage) {
         newLog.push(entry);
+        if (messageId) {
+          processedMessageIds.add(messageId);
+        }
       }
 
       // Ordena por timestamp
@@ -395,7 +399,7 @@ serve(async (req) => {
         custom_fields_data: {
           ...(existingCard.custom_fields_data || {}),
           chatwoot_messages: newLog,
-          chatwoot_msg_ids: newLog.map((m) => m.id),
+          chatwoot_msg_ids: Array.from(processedMessageIds),
         },
       };
       if (chatSender.role === "agent" && effectiveSender?.name) updateData.chatwoot_agent_name = effectiveSender.name;
@@ -504,7 +508,7 @@ serve(async (req) => {
       customer_profile_id: customerProfileId,
       custom_fields_data: {
         chatwoot_messages: initialLog,
-        chatwoot_msg_ids: initialLog.map((m) => m.id),
+        chatwoot_msg_ids: messageId ? [messageId] : [],
       },
     };
     if (conversation?.assignee?.name) cardData.chatwoot_agent_name = conversation.assignee.name;
