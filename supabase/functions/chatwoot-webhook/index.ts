@@ -39,6 +39,17 @@ const ChatwootWebhookSchema = z.object({
     id: z.number(),
   }).optional(),
   private: z.boolean().optional(),
+  message: z.object({
+    id: z.number(),
+    message_type: z.enum(["incoming","outgoing"]).optional(),
+    content: z.string().max(50000).optional(),
+    private: z.boolean().optional(),
+    sender: z.object({
+      type: z.string().max(50).optional(),
+      name: z.string().max(200).optional(),
+      email: z.string().email().max(255).optional().nullable(),
+    }).optional().nullable(),
+  }).optional(),
 });
 
 // Sanitização simples de HTML para evitar XSS
@@ -58,10 +69,11 @@ function sanitizeHTML(input: string): string {
 }
 
 // Create a simple signature to deduplicate messages
-function computeSignature(conversationId: string | undefined, senderName: string | undefined | null, messageType: string | undefined, content: string | undefined) {
+function computeSignature(messageId: string | undefined, conversationId: string | undefined, senderName: string | undefined | null, messageType: string | undefined, content: string | undefined) {
+  // Preferir assinatura pelo ID único da mensagem quando disponível
+  if (messageId) return `msg:${messageId}`;
   const norm = (s: any) => (s || "").toString().trim().toLowerCase().replace(/\s+/g, " ").slice(0, 300);
   const key = `${norm(conversationId)}|${norm(senderName)}|${norm(messageType)}|${norm(content)}`;
-  // Keep signature small
   return key.slice(0, 200);
 }
 
@@ -108,8 +120,13 @@ serve(async (req) => {
       );
     }
 
-    const { event, conversation, message_type, content: rawContent, sender, account } = webhook;
-    const content = rawContent ? sanitizeHTML(rawContent) : undefined;
+    const { event, conversation, message_type, content: rawContent, sender, account, message } = webhook;
+    const messageId = message?.id?.toString();
+    const derivedMessageType = message?.message_type || message_type;
+    const raw = message?.content ?? rawContent;
+    const content = raw ? sanitizeHTML(raw) : undefined;
+    const isPrivate = (message?.private ?? webhook.private) === true;
+    const effectiveSender = message?.sender ?? sender;
 
     if (!["conversation_created", "message_created", "message_updated", "conversation_updated"].includes(event)) {
       return new Response(JSON.stringify({ message: "Event ignored" }), {
@@ -117,14 +134,14 @@ serve(async (req) => {
       });
     }
 
-    if (["message_created", "message_updated"].includes(event) && webhook.private === true) {
+    if (["message_created", "message_updated"].includes(event) && isPrivate) {
       console.log("Ignoring private message");
       return new Response(JSON.stringify({ message: "Private message ignored" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (["message_created", "message_updated"].includes(event) && sender?.type === "captain_assistant") {
+    if (["message_created", "message_updated"].includes(event) && effectiveSender?.type === "captain_assistant") {
       console.log("Ignoring bot message");
       return new Response(JSON.stringify({ message: "Bot message ignored" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -218,7 +235,7 @@ serve(async (req) => {
         console.log(`Processing ${event} for conversation:`, conversation.id);
 
         // Robust deduplication using a persisted signature of the message
-        const signature = computeSignature(conversation?.id?.toString(), sender?.name, message_type, content);
+        const signature = computeSignature(messageId, conversation?.id?.toString(), effectiveSender?.name, derivedMessageType, content);
         const sigs = (existingCard.custom_fields_data?.chatwoot_msg_sigs as string[]) || [];
         if (signature && sigs.includes(signature)) {
           console.log("Duplicate message detected by signature, skipping");
@@ -228,12 +245,12 @@ serve(async (req) => {
         }
 
         const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-        const isAgent = sender?.type === "User" || message_type === "outgoing";
-        const isContact = sender?.type === "Contact" || message_type === "incoming";
-        console.log("Message details:", { sender_type: sender?.type, message_type, isAgent, isContact, sender_name: sender?.name });
+        const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
+        const isContact = effectiveSender?.type === "Contact" || derivedMessageType === "incoming";
+        console.log("Message details:", { sender_type: effectiveSender?.type, message_type: derivedMessageType, isAgent, isContact, sender_name: effectiveSender?.name });
 
         const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-        const senderName = sender?.name || (isAgent ? "Atendente" : "Cliente");
+        const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
 
         let updatedDescription: string;
         if (event === "message_updated") {
@@ -377,11 +394,11 @@ serve(async (req) => {
     else if (contentLower.includes("dúvida") || contentLower.includes("informação")) priority = "low";
 
     const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const isAgent = sender?.type === "User" || message_type === "outgoing";
+    const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
     const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-    const senderName = sender?.name || (isAgent ? "Atendente" : "Cliente");
+    const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
     const initialMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova conversa iniciada"}`;
-    const initialSignature = computeSignature(conversation?.id?.toString(), sender?.name, message_type, content);
+    const initialSignature = computeSignature(messageId, conversation?.id?.toString(), effectiveSender?.name, derivedMessageType, content);
 
     const cardData: any = {
       column_id: firstColumn.id,
