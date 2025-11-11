@@ -158,6 +158,9 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
 
     let lastRole: Role = 'client';
     let lastName: string | undefined;
+    // Keep track of known names to infer roles when labels are missing
+    let agentName: string | undefined;
+    let clientName: string | undefined;
     let i = 0;
 
     while (i < lines.length) {
@@ -171,15 +174,25 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
         while (j < lines.length && lines[j].trim().length === 0) j++;
         if (j < lines.length) {
           const nextParsed = parseLine(lines[j]);
-          const effectiveRole: Role =
-            nextParsed.role === 'unknown'
-              ? (parsed.role !== 'unknown' ? (parsed.role as Role) : lastRole)
-              : (nextParsed.role as Role);
+          const rawNextName = normalizeName(nextParsed.name);
+          const candidateName = rawNextName || parsed.name || lastName;
 
-          const effectiveName =
-            normalizeName(nextParsed.name) ||
-            parsed.name ||
-            lastName;
+          let effectiveRole: Role;
+          if (nextParsed.role === 'unknown') {
+            if (candidateName && agentName && candidateName === agentName) {
+              effectiveRole = 'agent';
+            } else if (candidateName && clientName && candidateName === clientName) {
+              effectiveRole = 'client';
+            } else if (parsed.role !== 'unknown') {
+              effectiveRole = parsed.role as Role;
+            } else {
+              effectiveRole = lastRole;
+            }
+          } else {
+            effectiveRole = nextParsed.role as Role;
+          }
+
+          const effectiveName = candidateName;
 
           let message = dedupeMessage(effectiveName, (nextParsed.message || '').trim());
           if (message.length > 0) {
@@ -190,7 +203,11 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
               message,
             });
             lastRole = effectiveRole;
-            if (effectiveName) lastName = effectiveName;
+            if (effectiveName) {
+              lastName = effectiveName;
+              if (effectiveRole === 'agent') agentName = effectiveName;
+              if (effectiveRole === 'client') clientName = effectiveName;
+            }
           }
           i = j + 1;
           continue;
@@ -212,11 +229,23 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
       }
 
       // Mensagem comum — herdar papel/nome quando necessário
-      const effectiveRole: Role =
-        parsed.role === 'unknown' ? lastRole : (parsed.role as Role);
+      let effectiveRole: Role;
+      const rawParsedName = normalizeName(parsed.name);
+      const candidateName = rawParsedName || lastName;
 
-      const effectiveName =
-        normalizeName(parsed.name) || lastName;
+      if (parsed.role === 'unknown') {
+        if (candidateName && agentName && candidateName === agentName) {
+          effectiveRole = 'agent';
+        } else if (candidateName && clientName && candidateName === clientName) {
+          effectiveRole = 'client';
+        } else {
+          effectiveRole = lastRole;
+        }
+      } else {
+        effectiveRole = parsed.role as Role;
+      }
+
+      const effectiveName = candidateName;
 
       let message = dedupeMessage(effectiveName, (parsed.message || '').trim());
       if (message.length > 0) {
@@ -227,7 +256,11 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
           message,
         });
         lastRole = effectiveRole;
-        if (effectiveName) lastName = effectiveName;
+        if (effectiveName) {
+          lastName = effectiveName;
+          if (effectiveRole === 'agent') agentName = effectiveName;
+          if (effectiveRole === 'client') clientName = effectiveName;
+        }
       }
 
       i++;
