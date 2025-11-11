@@ -15,47 +15,115 @@ type TranscribeRequest = {
   chatwoot_api_key?: string | null;
 };
 
+// Normaliza content-type para Whisper
+function normalizeContentType(ct?: string | null): string {
+  const val = (ct || "").toLowerCase().trim();
+  if (!val) return "audio/mpeg";
+  if (val.startsWith("audio/") || val === "audio") return ct!;
+  // Muitos áudios do WhatsApp/Chatwoot chegam como TS de vídeo
+  if (val === "video/vnd.dlna.mpeg-tts" || val === "video/mp2t" || val === "video/mpeg" || val === "application/octet-stream") {
+    return "audio/mpeg";
+  }
+  // fallback seguro
+  return "audio/mpeg";
+}
+
+async function tryFetch(url: string, headers: Record<string, string>) {
+  return await fetch(url, {
+    headers,
+    redirect: "follow",
+  });
+}
+
 async function fetchAudio(url: string, apiKey?: string | null) {
-  // Tenta com cabeçalho; depois sem cabeçalho; por fim adiciona api_access_token na query
-  const headers: Record<string, string> = {};
+  // Tentativas de autenticação para ActiveStorage do Chatwoot
+  const baseHeaders: Record<string, string> = {
+    Accept: "audio/*,application/octet-stream",
+    "User-Agent": "Supabase-Edge-Transcriber/1.0",
+  };
+
+  const strategies: Array<{ url: string; headers: Record<string, string>; label: string }> = [];
+
   if (apiKey) {
-    headers["api_access_token"] = apiKey!;
-    headers["Authorization"] = `Bearer ${apiKey}`;
+    strategies.push({
+      url,
+      headers: { ...baseHeaders, "Api-Access-Token": apiKey },
+      label: "Api-Access-Token header",
+    });
+    strategies.push({
+      url,
+      headers: { ...baseHeaders, api_access_token: apiKey },
+      label: "api_access_token header (lowercase)",
+    });
+    strategies.push({
+      url,
+      headers: { ...baseHeaders, Authorization: `Bearer ${apiKey}` },
+      label: "Authorization: Bearer",
+    });
   }
 
-  // 1) Tenta com headers
-  let res = await fetch(url, { headers });
+  // Fallback sem cabeçalho
+  strategies.push({
+    url,
+    headers: { ...baseHeaders },
+    label: "no headers",
+  });
 
-  // 2) Fallback sem headers
-  if (!res.ok) {
-    res = await fetch(url);
-  }
-
-  // 3) Fallback com token na query
-  if (!res.ok && apiKey) {
+  // Fallback com token na query
+  if (apiKey) {
     try {
       const u = new URL(url);
-      u.searchParams.set("api_access_token", apiKey!);
-      res = await fetch(u.toString());
+      const hadToken = u.searchParams.has("api_access_token");
+      if (!hadToken) {
+        u.searchParams.set("api_access_token", apiKey);
+      }
+      strategies.push({
+        url: u.toString(),
+        headers: { ...baseHeaders },
+        label: "api_access_token query",
+      });
+      // também tente com Api-Access-Token header junto com query, alguns setups exigem ambos
+      strategies.push({
+        url: u.toString(),
+        headers: { ...baseHeaders, "Api-Access-Token": apiKey },
+        label: "query + Api-Access-Token header",
+      });
     } catch {
-      // Se a URL não for válida, ignora e segue para erro
+      // URL inválida, ignora fallback de query
     }
   }
 
-  if (!res.ok) {
-    throw new Error(`Falha ao baixar áudio (${res.status})`);
+  let lastErrorText = "";
+  for (const strat of strategies) {
+    try {
+      const res = await tryFetch(strat.url, strat.headers);
+      if (res.ok) {
+        const contentType = res.headers.get("content-type") || "audio/mpeg";
+        const buf = await res.arrayBuffer();
+        console.log("✅ Audio baixado via", strat.label, "CT:", contentType);
+        return { buf, contentType };
+      } else {
+        const t = await res.text().catch(() => "");
+        lastErrorText = `status=${res.status} body=${t?.slice(0, 300) || ""}`;
+        console.warn("❌ Falha ao baixar áudio via", strat.label, lastErrorText);
+      }
+    } catch (e) {
+      lastErrorText = String(e);
+      console.warn("❌ Erro de rede na tentativa", strat.label, lastErrorText);
+    }
   }
-  const contentType = res.headers.get("content-type") || "audio/mpeg";
-  const buf = await res.arrayBuffer();
-  return { buf, contentType };
+
+  throw new Error(`Falha ao baixar áudio (${lastErrorText || "desconhecido"})`);
 }
 
 async function transcribeWithOpenAI(buf: ArrayBuffer, contentType: string) {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");
 
-  // Monta FormData para whisper-1
-  const file = new File([buf], "audio", { type: contentType || "audio/mpeg" });
+  // Ajusta content-type para Whisper
+  const ct = normalizeContentType(contentType);
+  const file = new File([buf], "audio", { type: ct });
+
   const form = new FormData();
   form.append("file", file);
   form.append("model", "whisper-1");
