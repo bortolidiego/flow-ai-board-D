@@ -224,6 +224,45 @@ function computePriority(allText: string): "low" | "medium" | "high" {
   return "medium";
 }
 
+// Helper: tenta múltiplas formas de autenticar contra o Chatwoot
+async function chatwootFetchJson(endpoint: string, apiKey: string | null) {
+  if (!apiKey) return { ok: false, status: 401, json: null };
+  const baseHeaders: Record<string, string> = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'Supabase-Edge-Function/1.0'
+  };
+
+  const strategies = [
+    { endpoint, headers: { ...baseHeaders, 'api_access_token': apiKey! }, label: 'api_access_token header' },
+    { endpoint, headers: { ...baseHeaders, 'Authorization': `Bearer ${apiKey}` }, label: 'Authorization: Bearer' },
+    { endpoint, headers: { ...baseHeaders, 'Api-Access-Token': apiKey! }, label: 'Api-Access-Token header' },
+    { endpoint: endpoint + (endpoint.includes('?') ? '&' : '?') + 'api_access_token=' + encodeURIComponent(apiKey!), headers: baseHeaders, label: 'api_access_token query' },
+  ];
+
+  for (const s of strategies) {
+    try {
+      const res = await fetch(s.endpoint, { headers: s.headers });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json === null) {
+          console.error("Chatwoot retornou resposta não JSON para", s.label);
+        } else {
+          console.log("Chatwoot OK via", s.label);
+        }
+        return { ok: true, status: res.status, json };
+      } else {
+        const text = await res.text().catch(() => "");
+        console.error("Chatwoot falhou", { url: s.endpoint, label: s.label, status: res.status, body: text?.slice(0, 500) });
+      }
+    } catch (e) {
+      console.error("Erro na tentativa de autenticação Chatwoot", { label: s.label, error: String(e) });
+    }
+  }
+
+  return { ok: false, status: 401, json: null };
+}
+
 // Busca anexos de uma mensagem na API do Chatwoot para obter URLs válidas
 async function fetchChatwootMessageAttachments(
   chatwootUrl: string,
@@ -234,34 +273,20 @@ async function fetchChatwootMessageAttachments(
 ): Promise<any[]> {
   if (!chatwootUrl || !apiKey || !accountId || !conversationId || !messageId) return [];
   const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages/${messageId}`;
-  const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'api_access_token': apiKey!,
-    'User-Agent': 'Supabase-Edge-Function/1.0'
-  };
-  try {
-    console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
-    const res = await fetch(endpoint, { headers });
-    if (!res.ok) {
-      console.error("Falha ao obter anexos via Chatwoot API", { status: res.status });
-      return [];
-    }
-    const msg = await res.json();
-    const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
-    const normalized = rawAttachments.map((att: any) => ({
-      id: att?.id,
-      url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
-      content_type: att?.content_type || null,
-      file_type: att?.file_type || null,
-      filename: att?.filename || null,
-    })).filter((a: any) => !!a.url);
-    console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
-    return normalized;
-  } catch (e) {
-    console.error("Erro consultando anexos na Chatwoot API:", e);
-    return [];
-  }
+  console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
+  const result = await chatwootFetchJson(endpoint, apiKey);
+  if (!result.ok) return [];
+  const msg = result.json;
+  const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
+  const normalized = rawAttachments.map((att: any) => ({
+    id: att?.id,
+    url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
+    content_type: att?.content_type || null,
+    file_type: att?.file_type || null,
+    filename: att?.filename || null,
+  })).filter((a: any) => !!a.url);
+  console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
+  return normalized;
 }
 
 // Fallback: buscar mensagens da conversa e coletar anexos do último item com anexos
@@ -273,41 +298,30 @@ async function fetchChatwootConversationMessageAttachments(
 ): Promise<any[]> {
   if (!chatwootUrl || !apiKey || !accountId || !conversationId) return [];
   const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-  const headers: Record<string, string> = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'api_access_token': apiKey!,
-    'User-Agent': 'Supabase-Edge-Function/1.0'
-  };
-  try {
-    console.log("Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
-    const res = await fetch(endpoint, { headers });
-    if (!res.ok) {
-      console.error("Falha ao obter mensagens via Chatwoot API", { status: res.status });
-      return [];
-    }
-    const msgs = await res.json();
-    if (!Array.isArray(msgs)) return [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i];
-      const rawAttachments = Array.isArray(m?.attachments) ? m.attachments : [];
-      const normalized = rawAttachments.map((att: any) => ({
-        id: att?.id,
-        url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
-        content_type: att?.content_type || null,
-        file_type: att?.file_type || null,
-        filename: att?.filename || null,
-      })).filter((a: any) => !!a.url);
-      if (normalized.length > 0) {
-        console.log("Anexos obtidos via histórico da conversa", { count: normalized.length });
-        return normalized;
-      }
-    }
-    return [];
-  } catch (e) {
-    console.error("Erro consultando mensagens da conversa na Chatwoot API:", e);
+  console.log("Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
+  const result = await chatwootFetchJson(endpoint, apiKey);
+  if (!result.ok) {
+    console.error("Falha ao obter mensagens via Chatwoot API", { status: result.status });
     return [];
   }
+  const msgs = result.json;
+  if (!Array.isArray(msgs)) return [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    const rawAttachments = Array.isArray(m?.attachments) ? m.attachments : [];
+    const normalized = rawAttachments.map((att: any) => ({
+      id: att?.id,
+      url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
+      content_type: att?.content_type || null,
+      file_type: att?.file_type || null,
+      filename: att?.filename || null,
+    })).filter((a: any) => !!a.url);
+    if (normalized.length > 0) {
+      console.log("Anexos obtidos via histórico da conversa", { count: normalized.length });
+      return normalized;
+    }
+  }
+  return [];
 }
 
 serve(async (req) => {
