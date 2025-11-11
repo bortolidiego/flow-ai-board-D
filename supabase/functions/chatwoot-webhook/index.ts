@@ -493,9 +493,10 @@ serve(async (req) => {
       }
     }
 
+    const baseHasUrls = (baseAttachments || []).some((a: any) => !!attachmentUrl(a));
     let fetchedConversationAttachments: any[] = [];
     if (
-      (baseAttachments.length === 0) &&
+      (!baseHasUrls) &&
       (fetchedAttachments.length === 0) &&
       (contentUrls.length === 0) &&
       integrationCheck?.chatwoot_url && integrationCheck?.chatwoot_api_key && integrationCheck?.account_id &&
