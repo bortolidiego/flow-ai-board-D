@@ -253,28 +253,29 @@ serve(async (req) => {
         const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
         const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
 
+        // Sempre rebusca a versão mais recente do card para evitar perdas por concorrência,
+        // e garante que latestCard exista em ambos os tipos de evento.
+        const { data: latestCard } = await supabase
+          .from("cards")
+          .select("description, custom_fields_data")
+          .eq("id", existingCard.id)
+          .single();
+
+        const baseDesc = latestCard?.description || "";
         let updatedDescription: string;
+
         if (event === "message_updated") {
-          const lines = (existingCard.description || "").split("\n");
+          const lines = baseDesc.split("\n");
           const updatedMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Mensagem editada"}`;
-          if (lines.length > 0 && lines[lines.length - 1].match(/^\[\d{2}:\d{2}\]/)) {
+          if (lines.length > 0 && /^\[\d{2}:\d{2}\]/.test(lines[lines.length - 1])) {
             lines[lines.length - 1] = updatedMessage;
             updatedDescription = lines.join("\n");
           } else {
-            updatedDescription = existingCard.description ? `${existingCard.description}\n${updatedMessage}` : updatedMessage;
+            updatedDescription = baseDesc ? `${baseDesc}\n${updatedMessage}` : updatedMessage;
           }
         } else {
           const newMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova mensagem"}`;
-          // Rebusca a descrição mais recente para evitar perda por concorrência
-          const { data: latestCard } = await supabase
-            .from("cards")
-            .select("description, custom_fields_data")
-            .eq("id", existingCard.id)
-            .single();
-
-          const baseDesc = latestCard?.description || "";
           if (baseDesc.includes(newMessage)) {
-            // Não reapende a mesma linha se já existe
             updatedDescription = baseDesc;
           } else {
             updatedDescription = baseDesc ? `${baseDesc}\n${newMessage}` : newMessage;
