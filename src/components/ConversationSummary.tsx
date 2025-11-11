@@ -5,6 +5,8 @@ import ChatMessageBubble from './ChatMessageBubble';
 interface ConversationSummaryProps {
   summary?: string;
   description?: string;
+  agentName?: string;
+  clientName?: string;
 }
 
 type Role = 'agent' | 'client' | 'system';
@@ -128,13 +130,33 @@ function parseLine(raw: string): ParsedLine {
   if (withMessage) {
     const name = normalizeName((withMessage[1] || '').trim());
     const message = (withMessage[2] || '').trim();
-    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
+    let role: ParsedRole;
+    
+    if (isAgent) {
+      role = 'agent';
+    } else if (isClient) {
+      role = 'client';
+    } else {
+      // Se não tem emoji/label, manter como unknown para inferência posterior
+      role = 'unknown';
+    }
+    
     return { role, time, name, message };
   }
 
   if (nameOnly) {
     const name = normalizeName((nameOnly[1] || '').trim());
-    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
+    let role: ParsedRole;
+    
+    if (isAgent) {
+      role = 'agent';
+    } else if (isClient) {
+      role = 'client';
+    } else {
+      // Se não tem emoji/label, manter como unknown para inferência posterior
+      role = 'unknown';
+    }
+    
     // Metadado "Nome:" sem conteúdo — deve fundir com próxima linha
     return { role, time, name, metaNameOnly: true };
   }
@@ -144,7 +166,7 @@ function parseLine(raw: string): ParsedLine {
   return { role: 'unknown', time, message: line };
 }
 
-export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
+export const ConversationSummary = ({ summary, description, agentName, clientName }: ConversationSummaryProps) => {
   const renderDescription = (text: string) => {
     if (!text) return null;
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
@@ -159,8 +181,9 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
     let lastRole: Role = 'client';
     let lastName: string | undefined;
     // Keep track of known names to infer roles when labels are missing
-    let agentName: string | undefined;
-    let clientName: string | undefined;
+    // Use provided names if available, otherwise track during parsing
+    let trackedAgentName = agentName;
+    let trackedClientName = clientName;
     let i = 0;
 
     while (i < lines.length) {
@@ -179,9 +202,9 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
 
           let effectiveRole: Role;
           if (nextParsed.role === 'unknown') {
-            if (candidateName && agentName && candidateName === agentName) {
+            if (candidateName && trackedAgentName && candidateName === trackedAgentName) {
               effectiveRole = 'agent';
-            } else if (candidateName && clientName && candidateName === clientName) {
+            } else if (candidateName && trackedClientName && candidateName === trackedClientName) {
               effectiveRole = 'client';
             } else if (parsed.role !== 'unknown') {
               effectiveRole = parsed.role as Role;
@@ -205,8 +228,8 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
             lastRole = effectiveRole;
             if (effectiveName) {
               lastName = effectiveName;
-              if (effectiveRole === 'agent') agentName = effectiveName;
-              if (effectiveRole === 'client') clientName = effectiveName;
+              if (effectiveRole === 'agent') trackedAgentName = effectiveName;
+              if (effectiveRole === 'client') trackedClientName = effectiveName;
             }
           }
           i = j + 1;
@@ -234,9 +257,9 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
       const candidateName = rawParsedName || lastName;
 
       if (parsed.role === 'unknown') {
-        if (candidateName && agentName && candidateName === agentName) {
+        if (candidateName && trackedAgentName && candidateName === trackedAgentName) {
           effectiveRole = 'agent';
-        } else if (candidateName && clientName && candidateName === clientName) {
+        } else if (candidateName && trackedClientName && candidateName === trackedClientName) {
           effectiveRole = 'client';
         } else {
           effectiveRole = lastRole;
@@ -258,8 +281,8 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
         lastRole = effectiveRole;
         if (effectiveName) {
           lastName = effectiveName;
-          if (effectiveRole === 'agent') agentName = effectiveName;
-          if (effectiveRole === 'client') clientName = effectiveName;
+          if (effectiveRole === 'agent') trackedAgentName = effectiveName;
+          if (effectiveRole === 'client') trackedClientName = effectiveName;
         }
       }
 

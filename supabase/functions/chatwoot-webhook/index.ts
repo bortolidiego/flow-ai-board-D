@@ -251,7 +251,9 @@ serve(async (req) => {
         console.log("Message details:", { sender_type: effectiveSender?.type, message_type: derivedMessageType, isAgent, isContact, sender_name: effectiveSender?.name });
 
         const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-        const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
+        // Usar nomes consistentes do card quando disponíveis
+        const senderName = effectiveSender?.name ||
+          (isAgent ? (existingCard.chatwoot_agent_name || "Atendente") : (existingCard.chatwoot_contact_name || "Cliente"));
 
         // Sempre rebusca a versão mais recente do card para evitar perdas por concorrência,
         // e garante que latestCard exista em ambos os tipos de evento.
@@ -375,6 +377,7 @@ serve(async (req) => {
       const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
       const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
       const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
+      // Para novos cards, usar o nome do sender diretamente
       const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
       const newMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova mensagem"}`;
       const signature = computeSignature(messageId, conversation?.id?.toString(), effectiveSender?.name, derivedMessageType, content);
