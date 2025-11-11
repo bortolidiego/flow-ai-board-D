@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { KanbanCard } from './KanbanCard';
-import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -76,6 +76,19 @@ export const KanbanColumn = ({
     onSelectAllColumn?.(id);
   };
 
+  // Calcular o totalizador de valores da coluna
+  const columnTotal = cards.reduce((sum, card) => {
+    return sum + (card.value || 0);
+  }, 0);
+
+  // Formatar o valor para exibição
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
+
   return (
     <Collapsible
       open={isMobile ? isOpen : true}
@@ -109,15 +122,30 @@ export const KanbanColumn = ({
                 onClick={(e) => e.stopPropagation()}
               />
             )}
-            <h2 className={cn("font-semibold text-foreground", isMobile && "text-base")}>{title}</h2>
-            <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground", isMobile ? "text-sm" : "text-xs")}>
-              {count}
-            </span>
-            {selectionMode && selectedInColumnCount > 0 && (
-              <span className={cn("px-2 py-0.5 font-medium rounded-full bg-primary text-primary-foreground", isMobile ? "text-sm" : "text-xs")}>
-                {selectedInColumnCount}
+            <div className="flex flex-col gap-1">
+              <h2 className={cn("font-semibold text-foreground", isMobile && "text-base")}>{title}</h2>
+              {columnTotal > 0 && (
+                <div className={cn(
+                  "flex items-center gap-1 text-xs font-medium",
+                  isMobile ? "text-sm" : "text-xs"
+                )}>
+                  <DollarSign className={cn("h-3 w-3", isMobile ? "h-4 w-4")} />
+                  <span className="text-green-600 dark:text-green-400">
+                    {formatCurrency(columnTotal)}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground", isMobile ? "text-sm" : "text-xs")}>
+                {count}
               </span>
-            )}
+              {selectionMode && selectedInColumnCount > 0 && (
+                <span className={cn("px-2 py-0.5 font-medium rounded-full bg-primary text-primary-foreground", isMobile ? "text-sm" : "text-xs")}>
+                  {selectedInColumnCount}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1">
             {!selectionMode && !isMobile && (
