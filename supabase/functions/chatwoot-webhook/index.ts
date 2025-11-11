@@ -129,9 +129,30 @@ function attachmentUrl(att: any): string | undefined {
   return att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
 }
 
+function isAudioUrlByExtension(url?: string | null): boolean {
+  if (!url) return false;
+  try {
+    const lower = url.toLowerCase();
+    return [
+      ".mp3",
+      ".ogg",
+      ".wav",
+      ".m4a",
+      ".aac",
+      ".flac",
+      ".webm",
+      ".amr",
+    ].some((ext) => lower.includes(ext));
+  } catch {
+    return false;
+  }
+}
+
 function isAudioAttachment(att: any): boolean {
   const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  return !!ct && (ct === "audio" || ct.startsWith("audio/"));
+  if (!!ct && (ct === "audio" || ct.startsWith("audio/"))) return true;
+  const url = attachmentUrl(att);
+  return isAudioUrlByExtension(url);
 }
 
 function isImageAttachment(att: any): boolean {
@@ -337,10 +358,20 @@ serve(async (req) => {
         const name = (url || "").split("/").pop() || `anexo-${att?.id || ""}`;
         if (!url) continue;
 
+        console.log("Processando anexo (update)", {
+          url,
+          content_type: att?.content_type || null,
+          file_type: att?.file_type || null,
+        });
+
         if (isAudioAttachment(att)) {
           // Transcreve via edge function dedicada
           let transcript: string | undefined = undefined;
           try {
+            console.log("Invocando transcribe-audio (update)", {
+              url,
+              content_type: att?.content_type || att?.file_type || null,
+            });
             const { data, error } = await supabase.functions.invoke("transcribe-audio", {
               body: {
                 url,
@@ -351,7 +382,7 @@ serve(async (req) => {
             });
             if (!error && data?.transcript) transcript = data.transcript;
           } catch (err) {
-            console.error("Transcrição falhou:", err);
+            console.error("Transcrição falhou (update):", err);
           }
           attachmentEntries.push({ type: "audio", name, url, content_type: att?.content_type || null, transcript });
         } else if (isImageAttachment(att)) {
@@ -456,9 +487,19 @@ serve(async (req) => {
       const name = (url || "").split("/").pop() || `anexo-${att?.id || ""}`;
       if (!url) continue;
 
+      console.log("Processando anexo (create)", {
+        url,
+        content_type: att?.content_type || null,
+        file_type: att?.file_type || null,
+      });
+
       if (isAudioAttachment(att)) {
         let transcript: string | undefined = undefined;
         try {
+          console.log("Invocando transcribe-audio (create)", {
+            url,
+            content_type: att?.content_type || att?.file_type || null,
+          });
           const { data, error } = await supabase.functions.invoke("transcribe-audio", {
             body: {
               url,
@@ -469,7 +510,7 @@ serve(async (req) => {
           });
           if (!error && data?.transcript) transcript = data.transcript;
         } catch (err) {
-          console.error("Transcrição falhou:", err);
+          console.error("Transcrição falhou (create):", err);
         }
         attachmentEntries.push({ type: "audio", name, url, content_type: att?.content_type || null, transcript });
       } else if (isImageAttachment(att)) {
