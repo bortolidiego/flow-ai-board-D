@@ -28,7 +28,7 @@ const ChatwootWebhookSchema = z.object({
       }).optional(),
     }).optional(),
   }).optional(),
-  message_type: z.enum(["incoming", "outgoing", "template"]).optional(),
+  message_type: z.enum(["incoming", "outgoing"]).optional(),
   content: z.string().max(50000).optional(),
   sender: z.object({
     type: z.string().max(50).optional(),
@@ -41,7 +41,7 @@ const ChatwootWebhookSchema = z.object({
   private: z.boolean().optional(),
   message: z.object({
     id: z.number(),
-    message_type: z.enum(["incoming","outgoing","template"]).optional(),
+    message_type: z.enum(["incoming","outgoing"]).optional(),
     content: z.string().max(50000).optional(),
     private: z.boolean().optional(),
     sender: z.object({
@@ -122,8 +122,7 @@ serve(async (req) => {
 
     const { event, conversation, message_type, content: rawContent, sender, account, message } = webhook;
     const messageId = message?.id?.toString();
-    const derivedMessageTypeRaw = message?.message_type || message_type;
-    const derivedMessageType = derivedMessageTypeRaw === "template" ? "outgoing" : derivedMessageTypeRaw;
+    const derivedMessageType = message?.message_type || message_type;
     const raw = message?.content ?? rawContent;
     const content = raw ? sanitizeHTML(raw) : undefined;
     const isPrivate = (message?.private ?? webhook.private) === true;
@@ -251,37 +250,21 @@ serve(async (req) => {
         console.log("Message details:", { sender_type: effectiveSender?.type, message_type: derivedMessageType, isAgent, isContact, sender_name: effectiveSender?.name });
 
         const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-        // Usar nomes consistentes do card quando disponíveis
-        const senderName = effectiveSender?.name ||
-          (isAgent ? (existingCard.chatwoot_agent_name || "Atendente") : (existingCard.chatwoot_contact_name || "Cliente"));
+        const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
 
-        // Sempre rebusca a versão mais recente do card para evitar perdas por concorrência,
-        // e garante que latestCard exista em ambos os tipos de evento.
-        const { data: latestCard } = await supabase
-          .from("cards")
-          .select("description, custom_fields_data")
-          .eq("id", existingCard.id)
-          .single();
-
-        const baseDesc = latestCard?.description || "";
         let updatedDescription: string;
-
         if (event === "message_updated") {
-          const lines = baseDesc.split("\n");
+          const lines = (existingCard.description || "").split("\n");
           const updatedMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Mensagem editada"}`;
-          if (lines.length > 0 && /^\[\d{2}:\d{2}\]/.test(lines[lines.length - 1])) {
+          if (lines.length > 0 && lines[lines.length - 1].match(/^\[\d{2}:\d{2}\]/)) {
             lines[lines.length - 1] = updatedMessage;
             updatedDescription = lines.join("\n");
           } else {
-            updatedDescription = baseDesc ? `${baseDesc}\n${updatedMessage}` : updatedMessage;
+            updatedDescription = existingCard.description ? `${existingCard.description}\n${updatedMessage}` : updatedMessage;
           }
         } else {
           const newMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova mensagem"}`;
-          if (baseDesc.includes(newMessage)) {
-            updatedDescription = baseDesc;
-          } else {
-            updatedDescription = baseDesc ? `${baseDesc}\n${newMessage}` : newMessage;
-          }
+          updatedDescription = existingCard.description ? `${existingCard.description}\n${newMessage}` : newMessage;
         }
 
         const allContent = updatedDescription.toLowerCase();
@@ -296,12 +279,9 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         };
         if (isAgent && sender?.name) updateData.chatwoot_agent_name = sender.name;
-        // Atualiza assinaturas usando a versão mais recente para evitar colisão
-        const latestSigs = Array.isArray((latestCard?.custom_fields_data as any)?.chatwoot_msg_sigs)
-          ? (latestCard!.custom_fields_data as any).chatwoot_msg_sigs
-          : sigs;
-        const newSigs = [...latestSigs, signature].slice(-20);
-        updateData.custom_fields_data = { ...(latestCard?.custom_fields_data || existingCard.custom_fields_data || {}), chatwoot_msg_sigs: newSigs };
+        // Update message signature registry to avoid future duplicates
+        const newSigs = [...sigs, signature].slice(-20);
+        updateData.custom_fields_data = { ...(existingCard.custom_fields_data || {}), chatwoot_msg_sigs: newSigs };
 
         const { error: updateError } = await supabase.from("cards").update(updateData).eq("id", existingCard.id);
         if (updateError) {
@@ -343,95 +323,6 @@ serve(async (req) => {
       console.warn("Event without account info - cannot create new card");
       return new Response(JSON.stringify({ error: "Account information required for new conversations" }), {
         status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Evitar duplicações: só cria cartão para eventos específicos e se não houver cartão ativo recente
-    if (!["conversation_created", "message_created"].includes(event)) {
-      console.log("Skipping card creation for event:", event);
-      return new Response(JSON.stringify({ message: "Event does not create cards" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (event === "message_created" && derivedMessageType !== "incoming") {
-      console.log("Skipping card creation for non-incoming message.");
-      return new Response(JSON.stringify({ message: "Only incoming messages can create a new card" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    // Checar se há cartão ativo criado recentemente (últimos 2 minutos) para esta conversa
-    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-    const { data: recentActiveCards } = await supabase
-      .from("cards")
-      .select("id, completion_type, created_at")
-      .eq("chatwoot_conversation_id", conversation?.id?.toString())
-      .is("completion_type", null)
-      .gt("created_at", twoMinutesAgo);
-
-    if (recentActiveCards && recentActiveCards.length > 0) {
-      // Em vez de retornar cedo, anexar a mensagem ao card existente criado há pouco
-      const targetCardId = recentActiveCards[0].id;
-      console.log("Active card already exists. Appending message to card:", targetCardId);
-
-      const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-      const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
-      const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-      // Para novos cards, usar o nome do sender diretamente
-      const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
-      const newMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova mensagem"}`;
-      const signature = computeSignature(messageId, conversation?.id?.toString(), effectiveSender?.name, derivedMessageType, content);
-
-      // Buscar estado mais recente do card
-      const { data: latestCardForAppend, error: latestErr } = await supabase
-        .from("cards")
-        .select("description, custom_fields_data, assignee")
-        .eq("id", targetCardId)
-        .single();
-
-      if (latestErr) {
-        console.error("Error fetching latest card for append:", latestErr);
-        return new Response(JSON.stringify({ error: latestErr.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Evitar duplicar a mesma linha
-      const baseDesc = latestCardForAppend?.description || "";
-      const updatedDescription = baseDesc.includes(newMessage)
-        ? baseDesc
-        : baseDesc
-          ? `${baseDesc}\n${newMessage}`
-          : newMessage;
-
-      const sigs = Array.isArray((latestCardForAppend?.custom_fields_data as any)?.chatwoot_msg_sigs)
-        ? (latestCardForAppend!.custom_fields_data as any).chatwoot_msg_sigs
-        : [];
-      const newSigs = signature ? [...sigs, signature].slice(-20) : sigs;
-
-      const { error: appendErr } = await supabase
-        .from("cards")
-        .update({
-          description: updatedDescription,
-          assignee: conversation?.assignee?.name || latestCardForAppend?.assignee,
-          custom_fields_data: { ...(latestCardForAppend?.custom_fields_data || {}), chatwoot_msg_sigs: newSigs },
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", targetCardId);
-
-      if (appendErr) {
-        console.error("Error appending message to existing recent card:", appendErr);
-        return new Response(JSON.stringify({ error: appendErr.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Disparar análise em background
-      await triggerAIAnalysis(targetCardId);
-
-      return new Response(JSON.stringify({ message: "Message appended to existing recent card", cardId: targetCardId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

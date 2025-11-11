@@ -42,8 +42,8 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
       <div
         className={cn(
           "rounded-2xl px-3 py-2 shadow-sm border max-w-[80%] whitespace-pre-wrap break-words",
-          isAgent && "bg-blue-100 border-blue-300 dark:bg-blue-900/20 dark:border-blue-700",
-          isClient && "bg-gray-100 border-gray-300 dark:bg-gray-800 dark:border-gray-600",
+          isAgent && "bg-primary/15 border-primary/30",
+          isClient && "bg-secondary/15 border-secondary/30",
           isSystem && "bg-muted/40 border-muted"
         )}
       >

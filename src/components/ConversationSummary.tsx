@@ -5,8 +5,6 @@ import ChatMessageBubble from './ChatMessageBubble';
 interface ConversationSummaryProps {
   summary?: string;
   description?: string;
-  agentName?: string;
-  clientName?: string;
 }
 
 type Role = 'agent' | 'client' | 'system';
@@ -24,7 +22,7 @@ type ParsedLine = {
  * Tenta identificar timestamp [HH:MM]
  */
 function extractTime(line: string) {
-  const m = line.match(/^\s*\[(\d{2}:\d{2})\]/);
+  const m = line.match(/\[(\d{2}:\d{2})\]/);
   return m ? m[1] : undefined;
 }
 
@@ -45,39 +43,6 @@ function normalizeName(raw?: string) {
     .replace(/\b(Atendente|Cliente)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-/**
- * Escapa nome para uso em regex
- */
-function escapeRegExp(s: string) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Remove o prefixo redundante 'Nome:' (com ou sem emojis/itálico)
- * do início do conteúdo da mensagem, mantendo apenas uma ocorrência do nome.
- */
-function dedupeMessage(name?: string, message?: string) {
-  if (!message) return '';
-  const msg = message.trim();
-  const cleanName = normalizeName(name);
-  if (!cleanName) return msg;
-
-  // Padrão abrangente: emojis/labels, itálico/ênfase, espaços e dois-pontos
-  const n = escapeRegExp(cleanName);
-  const pattern = new RegExp(
-    String.raw`^\s*(?:[\*\_\~"]*)\s*(?:🧑‍💼|👤|Atendente|Cliente)?\s*${n}\s*(?:[\*\_\~"]*)\s*:\s*(?:[\*\_\~"]*)\s*`,
-    'i'
-  );
-
-  let out = msg.replace(pattern, '').trim();
-
-  // Se ainda sobra apenas marcação sem conteúdo útil, limpar
-  out = out.replace(/^[\*\_\~"\s]+$/, '').trim();
-
-  // Evitar bolha vazia se a mensagem ficar sem conteúdo após a poda
-  return out;
 }
 
 /**
@@ -130,33 +95,13 @@ function parseLine(raw: string): ParsedLine {
   if (withMessage) {
     const name = normalizeName((withMessage[1] || '').trim());
     const message = (withMessage[2] || '').trim();
-    let role: ParsedRole;
-    
-    if (isAgent) {
-      role = 'agent';
-    } else if (isClient) {
-      role = 'client';
-    } else {
-      // Se não tem emoji/label, manter como unknown para inferência posterior
-      role = 'unknown';
-    }
-    
+    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
     return { role, time, name, message };
   }
 
   if (nameOnly) {
     const name = normalizeName((nameOnly[1] || '').trim());
-    let role: ParsedRole;
-    
-    if (isAgent) {
-      role = 'agent';
-    } else if (isClient) {
-      role = 'client';
-    } else {
-      // Se não tem emoji/label, manter como unknown para inferência posterior
-      role = 'unknown';
-    }
-    
+    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
     // Metadado "Nome:" sem conteúdo — deve fundir com próxima linha
     return { role, time, name, metaNameOnly: true };
   }
@@ -166,7 +111,7 @@ function parseLine(raw: string): ParsedLine {
   return { role: 'unknown', time, message: line };
 }
 
-export const ConversationSummary = ({ summary, description, agentName, clientName }: ConversationSummaryProps) => {
+export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
   const renderDescription = (text: string) => {
     if (!text) return null;
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
@@ -180,10 +125,6 @@ export const ConversationSummary = ({ summary, description, agentName, clientNam
 
     let lastRole: Role = 'client';
     let lastName: string | undefined;
-    // Keep track of known names to infer roles when labels are missing
-    // Use provided names if available, otherwise track during parsing
-    let trackedAgentName = agentName;
-    let trackedClientName = clientName;
     let i = 0;
 
     while (i < lines.length) {
@@ -197,27 +138,17 @@ export const ConversationSummary = ({ summary, description, agentName, clientNam
         while (j < lines.length && lines[j].trim().length === 0) j++;
         if (j < lines.length) {
           const nextParsed = parseLine(lines[j]);
-          const rawNextName = normalizeName(nextParsed.name);
-          const candidateName = rawNextName || parsed.name || lastName;
+          const effectiveRole: Role =
+            nextParsed.role === 'unknown'
+              ? (parsed.role !== 'unknown' ? (parsed.role as Role) : lastRole)
+              : (nextParsed.role as Role);
 
-          let effectiveRole: Role;
-          if (nextParsed.role === 'unknown') {
-            if (candidateName && trackedAgentName && candidateName === trackedAgentName) {
-              effectiveRole = 'agent';
-            } else if (candidateName && trackedClientName && candidateName === trackedClientName) {
-              effectiveRole = 'client';
-            } else if (parsed.role !== 'unknown') {
-              effectiveRole = parsed.role as Role;
-            } else {
-              effectiveRole = lastRole;
-            }
-          } else {
-            effectiveRole = nextParsed.role as Role;
-          }
+          const effectiveName =
+            normalizeName(nextParsed.name) ||
+            parsed.name ||
+            lastName;
 
-          const effectiveName = candidateName;
-
-          let message = dedupeMessage(effectiveName, (nextParsed.message || '').trim());
+          const message = (nextParsed.message || '').trim();
           if (message.length > 0) {
             bubbles.push({
               role: effectiveRole,
@@ -226,11 +157,7 @@ export const ConversationSummary = ({ summary, description, agentName, clientNam
               message,
             });
             lastRole = effectiveRole;
-            if (effectiveName) {
-              lastName = effectiveName;
-              if (effectiveRole === 'agent') trackedAgentName = effectiveName;
-              if (effectiveRole === 'client') trackedClientName = effectiveName;
-            }
+            if (effectiveName) lastName = effectiveName;
           }
           i = j + 1;
           continue;
@@ -252,25 +179,13 @@ export const ConversationSummary = ({ summary, description, agentName, clientNam
       }
 
       // Mensagem comum — herdar papel/nome quando necessário
-      let effectiveRole: Role;
-      const rawParsedName = normalizeName(parsed.name);
-      const candidateName = rawParsedName || lastName;
+      const effectiveRole: Role =
+        parsed.role === 'unknown' ? lastRole : (parsed.role as Role);
 
-      if (parsed.role === 'unknown') {
-        if (candidateName && trackedAgentName && candidateName === trackedAgentName) {
-          effectiveRole = 'agent';
-        } else if (candidateName && trackedClientName && candidateName === trackedClientName) {
-          effectiveRole = 'client';
-        } else {
-          effectiveRole = lastRole;
-        }
-      } else {
-        effectiveRole = parsed.role as Role;
-      }
+      const effectiveName =
+        normalizeName(parsed.name) || lastName;
 
-      const effectiveName = candidateName;
-
-      let message = dedupeMessage(effectiveName, (parsed.message || '').trim());
+      const message = (parsed.message || '').trim();
       if (message.length > 0) {
         bubbles.push({
           role: effectiveRole,
@@ -279,11 +194,7 @@ export const ConversationSummary = ({ summary, description, agentName, clientNam
           message,
         });
         lastRole = effectiveRole;
-        if (effectiveName) {
-          lastName = effectiveName;
-          if (effectiveRole === 'agent') trackedAgentName = effectiveName;
-          if (effectiveRole === 'client') trackedClientName = effectiveName;
-        }
+        if (effectiveName) lastName = effectiveName;
       }
 
       i++;
