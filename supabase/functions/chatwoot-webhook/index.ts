@@ -217,6 +217,45 @@ function computePriority(allText: string): "low" | "medium" | "high" {
   return "medium";
 }
 
+// Busca anexos de uma mensagem na API do Chatwoot para obter URLs válidas
+async function fetchChatwootMessageAttachments(
+  chatwootUrl: string,
+  apiKey: string | null,
+  accountId: string | number,
+  conversationId: number,
+  messageId?: number
+): Promise<any[]> {
+  if (!chatwootUrl || !apiKey || !accountId || !conversationId || !messageId) return [];
+  const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages/${messageId}`;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'api_access_token': apiKey!,
+    'Authorization': `Bearer ${apiKey}`,
+  };
+  try {
+    console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
+    const res = await fetch(endpoint, { headers });
+    if (!res.ok) {
+      console.error("Falha ao obter anexos via Chatwoot API", { status: res.status });
+      return [];
+    }
+    const msg = await res.json();
+    const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
+    const normalized = rawAttachments.map((att: any) => ({
+      id: att?.id,
+      url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
+      content_type: att?.content_type || null,
+      file_type: att?.file_type || null,
+      filename: att?.filename || null,
+    })).filter((a: any) => !!a.url);
+    console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
+    return normalized;
+  } catch (e) {
+    console.error("Erro consultando anexos na Chatwoot API:", e);
+    return [];
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -355,13 +394,35 @@ serve(async (req) => {
     // Considera anexos enviados em message.attachments e também URLs dentro do conteúdo
     const baseAttachments = (message?.attachments || []) as any[];
     const contentUrls = extractUrlsFromContent(message?.content ?? rawContent, contentText);
+
+    // Fallback: se não há anexos com URL utilizável, tenta buscar na API do Chatwoot
+    let fetchedAttachments: any[] = [];
+    if (
+      ((baseAttachments || []).length === 0 || (baseAttachments || []).some((a: any) => !attachmentUrl(a))) &&
+      integrationCheck?.chatwoot_url && integrationCheck?.chatwoot_api_key && integrationCheck?.account_id &&
+      conversation?.id && message?.id
+    ) {
+      try {
+        fetchedAttachments = await fetchChatwootMessageAttachments(
+          integrationCheck.chatwoot_url,
+          integrationCheck.chatwoot_api_key,
+          String(integrationCheck.account_id),
+          conversation.id,
+          message.id
+        );
+      } catch (e) {
+        console.error("Falha no fallback de anexos pela API do Chatwoot:", e);
+      }
+    }
+
     const attachments = [
-      ...baseAttachments,
+      ...(fetchedAttachments.length > 0 ? fetchedAttachments : baseAttachments),
       ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
     ] as any[];
 
     console.log("Anexos detectados para processamento", {
       baseCount: baseAttachments.length,
+      fetchedCount: fetchedAttachments.length,
       contentUrlCount: contentUrls.length,
       total: (attachments || []).length,
     });
