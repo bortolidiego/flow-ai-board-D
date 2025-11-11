@@ -12,12 +12,11 @@ const corsHeaders = {
 
 const AttachmentSchema = z.object({
   id: z.number().optional(),
-  content_type: z.string().optional().nullable(), // e.g. "audio/mpeg", "image/png", ...
-  data_url: z.string().optional().nullable(),     // geralmente vem com token embutido
-  download_url: z.string().optional().nullable(), // às vezes usado para baixar diretamente
-  file_type: z.string().optional().nullable(),    // redundante, usado por alguns clients
-  url: z.string().optional().nullable(),          // fallback
-  // outros campos ignorados para simplificar
+  content_type: z.string().optional().nullable(),
+  data_url: z.string().optional().nullable(),
+  download_url: z.string().optional().nullable(),
+  file_type: z.string().optional().nullable(),
+  url: z.string().optional().nullable(),
 });
 
 const ChatwootWebhookSchema = z.object({
@@ -70,18 +69,13 @@ const ChatwootWebhookSchema = z.object({
 function htmlToText(input: string | undefined): string {
   if (!input) return "";
   let s = input;
-  // Preserva quebras de linha
   s = s.replace(/<\s*br\s*\/?>/gi, "\n").replace(/<\/\s*p\s*>/gi, "\n");
-  // Links: transforma <a href="...">texto</a> em texto (url)
   s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)");
-  // Remove scripts/event handlers perigosos
   s = s.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
   s = s.replace(/on\w+\s*=\s*["'][^"']*["']/gi, "");
   s = s.replace(/on\w+\s*=\s*[^\s>]*/gi, "");
   s = s.replace(/javascript:/gi, "");
-  // Remove demais tags
   s = s.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, "");
-  // Normaliza espaços
   s = s.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
   return s;
 }
@@ -134,14 +128,7 @@ function isAudioUrlByExtension(url?: string | null): boolean {
   try {
     const lower = url.toLowerCase();
     return [
-      ".mp3",
-      ".ogg",
-      ".wav",
-      ".m4a",
-      ".aac",
-      ".flac",
-      ".webm",
-      ".amr",
+      ".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr",
     ].some((ext) => lower.includes(ext));
   } catch {
     return false;
@@ -164,7 +151,6 @@ function isFileAttachment(att: any): boolean {
   const ct = (att?.content_type || att?.file_type || "").toLowerCase();
   const isAudio = !!ct && (ct === "audio" || ct.startsWith("audio/"));
   const isImage = !!ct && (ct === "image" || ct.startsWith("image/"));
-  // qualquer coisa que não seja imagem/áudio tratamos como arquivo genérico
   return !!ct && !(isAudio || isImage);
 }
 
@@ -184,13 +170,10 @@ function extractUrlsFromContent(raw?: string | null, text?: string | null): stri
       let m: RegExpExecArray | null;
       while ((m = attrRegex.exec(s)) !== null) {
         const val = m[2];
-        // Ignora blobs (não acessíveis externamente)
         if (val.startsWith("blob:")) continue;
         urls.add(val);
       }
-    } catch {
-      // ignora erros de regex
-    }
+    } catch {}
   };
   pushMatches(raw);
   pushMatches(text);
@@ -212,7 +195,6 @@ function normalizeUrl(u: string, base?: string | null): string {
 }
 
 function renderDescriptionFromLog(log: any[]): string {
-  // Gera descrição legível a partir do log de mensagens
   const lines: string[] = [];
   for (const m of log) {
     const base = `[${formatTimestamp(m.timestamp)}] ${m.sender_label} ${m.sender_name}: ${m.content || ""}`.trim();
@@ -253,9 +235,10 @@ async function fetchChatwootMessageAttachments(
   if (!chatwootUrl || !apiKey || !accountId || !conversationId || !messageId) return [];
   const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages/${messageId}`;
   const headers: Record<string, string> = {
+    'Accept': 'application/json',
     'Content-Type': 'application/json',
     'api_access_token': apiKey!,
-    'Authorization': `Bearer ${apiKey}`,
+    'User-Agent': 'Supabase-Edge-Function/1.0'
   };
   try {
     console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
@@ -291,9 +274,10 @@ async function fetchChatwootConversationMessageAttachments(
   if (!chatwootUrl || !apiKey || !accountId || !conversationId) return [];
   const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
   const headers: Record<string, string> = {
+    'Accept': 'application/json',
     'Content-Type': 'application/json',
     'api_access_token': apiKey!,
-    'Authorization': `Bearer ${apiKey}`,
+    'User-Agent': 'Supabase-Edge-Function/1.0'
   };
   try {
     console.log("Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
@@ -304,7 +288,6 @@ async function fetchChatwootConversationMessageAttachments(
     }
     const msgs = await res.json();
     if (!Array.isArray(msgs)) return [];
-    // Procura o último com anexos utilizáveis
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
       const rawAttachments = Array.isArray(m?.attachments) ? m.attachments : [];
@@ -341,13 +324,11 @@ serve(async (req) => {
     const webhook = ChatwootWebhookSchema.parse(rawWebhook);
     const { event, conversation, message, message_type, content: rawContent, sender, account } = webhook;
 
-    // Ignora privados (notas internas) para evitar poluir o card
     if (["message_created", "message_updated"].includes(event) && (message?.private ?? webhook.private) === true) {
       return new Response(JSON.stringify({ message: "Mensagem privada ignorada" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    // Ignora mensagens de bot "captain_assistant" conforme regra anterior
     const effectiveSender = message?.sender ?? sender;
     if (["message_created", "message_updated"].includes(event) && effectiveSender?.type === "captain_assistant") {
       return new Response(JSON.stringify({ message: "Mensagem de bot ignorada" }), {
@@ -363,7 +344,6 @@ serve(async (req) => {
       });
     }
 
-    // Checa integração ativa
     const { data: integrationCheck, error: integrationError } = await supabase
       .from("chatwoot_integrations")
       .select("active, account_id, chatwoot_api_key, chatwoot_url, inbox_id, pipeline_id, pipelines(id, columns(id, name, position))")
@@ -390,7 +370,6 @@ serve(async (req) => {
       });
     }
 
-    // Filtra por inbox se configurado
     const conversationInboxId = conversation?.inbox_id?.toString();
     if (conversationInboxId) {
       const allowedInboxIds = (integrationCheck.inbox_id || "")
@@ -408,7 +387,6 @@ serve(async (req) => {
       });
     }
 
-    // Localiza card ativo existente
     let existingCard: any = null;
     if (["message_created", "message_updated", "conversation_updated"].includes(event) && conversation?.id) {
       const result = await supabase
@@ -420,7 +398,6 @@ serve(async (req) => {
       existingCard = result.data;
     }
 
-    // Atualiza metadados em conversation_updated
     if (existingCard && event === "conversation_updated") {
       const updateData: any = {
         assignee: conversation?.assignee?.name || existingCard.assignee,
@@ -443,7 +420,6 @@ serve(async (req) => {
       });
     }
 
-    // Helper para disparar análise de IA em background
     const triggerAIAnalysis = async (cardId: string) => {
       try {
         await supabase.functions.invoke("analyze-conversation", {
@@ -455,19 +431,16 @@ serve(async (req) => {
       }
     };
 
-    // Construção de mensagem (texto + anexos)
     const derivedMessageType = message?.message_type || message_type;
     const contentText = htmlToText(message?.content ?? rawContent);
     const chatSender = buildSender(effectiveSender?.type, derivedMessageType);
     const timestamp = normalizeTimestamp(message?.created_at ?? conversation?.created_at ?? null);
     const messageId = message?.id?.toString();
 
-    // Considera anexos enviados em message.attachments e também URLs dentro do conteúdo
     const baseAttachments = (message?.attachments || []) as any[];
     const contentUrlsRaw = extractUrlsFromContent(message?.content ?? rawContent, contentText);
     const contentUrls = contentUrlsRaw.map((u) => normalizeUrl(u, integrationCheck?.chatwoot_url));
 
-    // Fallback 1: se não há anexos com URL utilizável, tenta buscar na API do Chatwoot por messageId
     let fetchedAttachments: any[] = [];
     if (
       ((baseAttachments || []).length === 0 || (baseAttachments || []).some((a: any) => !attachmentUrl(a))) &&
@@ -487,7 +460,6 @@ serve(async (req) => {
       }
     }
 
-    // Fallback 2: se ainda não há anexos (base + fetched + content), busca pelos messages da conversa
     let fetchedConversationAttachments: any[] = [];
     if (
       (baseAttachments.length === 0) &&
@@ -522,21 +494,17 @@ serve(async (req) => {
       total: (attachments || []).length,
     });
 
-    // Dedup estrito por message.id
     const existingLog = (existingCard?.custom_fields_data?.chatwoot_messages as any[]) || [];
     const processedMessageIds = new Set((existingCard?.custom_fields_data?.chatwoot_msg_ids as string[]) || []);
     const alreadyHasMessage = messageId ? processedMessageIds.has(messageId) : false;
 
-    // Se message_updated e não existe card: ignorar (será criado em message_created)
     if (!existingCard && event === "message_updated") {
       return new Response(JSON.stringify({ message: "Update ignorado sem card existente" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Se já existe card
     if (existingCard) {
-      // Atualiza ou insere entrada do log
       let newLog = [...existingLog];
 
       const attachmentEntries: any[] = [];
@@ -552,7 +520,6 @@ serve(async (req) => {
         });
 
         if (isAudioAttachment(att)) {
-          // Transcreve via edge function dedicada
           let transcript: string | undefined = undefined;
           try {
             console.log("Invocando transcribe-audio (update)", {
@@ -577,7 +544,6 @@ serve(async (req) => {
         } else if (isFileAttachment(att)) {
           attachmentEntries.push({ type: "file", name, url, content_type: att?.content_type || null });
         } else {
-          // desconhecido, trata como arquivo genérico
           attachmentEntries.push({ type: "file", name, url, content_type: att?.content_type || att?.file_type || null });
         }
       }
@@ -601,7 +567,6 @@ serve(async (req) => {
         }
       }
 
-      // Ordena por timestamp
       newLog.sort((a, b) => {
         const ta = new Date(a.timestamp).getTime();
         const tb = new Date(b.timestamp).getTime();
@@ -639,8 +604,6 @@ serve(async (req) => {
       });
     }
 
-    // Não há card: criar novo
-    // Opcional: reaproveitar customer_profile_id de card finalizado
     let customerProfileId: string | null = null;
     if (!existingCard && conversation?.id) {
       const { data: finalizedCard } = await supabase
@@ -667,7 +630,6 @@ serve(async (req) => {
       });
     }
 
-    // Monta entry inicial, com transcrição de áudios
     const attachmentEntries: any[] = [];
     for (const att of attachments) {
       const url = attachmentUrl(att);
