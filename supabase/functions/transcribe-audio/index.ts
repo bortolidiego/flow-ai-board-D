@@ -40,9 +40,11 @@ async function tryFetch(url: string, headers: Record<string, string>) {
 }
 
 async function fetchAudio(url: string, apiKey?: string | null) {
+  console.log("🎵 Iniciando download do áudio:", { url, hasApiKey: !!apiKey });
+  
   // Tentativas de autenticação para ActiveStorage do Chatwoot
   const baseHeaders: Record<string, string> = {
-    Accept: "audio/*,application/octet-stream",
+    Accept: "audio/*,application/octet-stream,*/*",
     "User-Agent": "Supabase-Edge-Transcriber/1.0",
   };
 
@@ -96,15 +98,26 @@ async function fetchAudio(url: string, apiKey?: string | null) {
       // URL inválida, ignora fallback de query
     }
   }
+  
+  console.log("🔄 Estratégias de download:", strategies.map(s => s.label));
 
   let lastErrorText = "";
   for (const strat of strategies) {
     try {
+      console.log("🌐 Tentando baixar via:", strat.label, "URL:", strat.url);
       const res = await tryFetch(strat.url, strat.headers);
+      
+      console.log("📊 Resposta:", { 
+        status: res.status, 
+        statusText: res.statusText,
+        contentType: res.headers.get("content-type"),
+        contentLength: res.headers.get("content-length")
+      });
+
       if (res.ok) {
         const contentType = res.headers.get("content-type") || "audio/mpeg";
         const buf = await res.arrayBuffer();
-        console.log("✅ Audio baixado via", strat.label, "CT:", contentType);
+        console.log("✅ Audio baixado via", strat.label, "CT:", contentType, "Size:", buf.byteLength);
         return { buf, contentType };
       } else {
         const t = await res.text().catch(() => "");
@@ -134,6 +147,8 @@ async function transcribeWithOpenAI(buf: ArrayBuffer, contentType: string) {
   form.append("model", "whisper-1");
   form.append("language", "pt");
 
+  console.log("🤖 Enviando para transcrição na OpenAI...", { fileType: file.type, fileSize: file.size });
+
   const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
     headers: {
@@ -143,9 +158,11 @@ async function transcribeWithOpenAI(buf: ArrayBuffer, contentType: string) {
   });
   if (!resp.ok) {
     const errText = await resp.text();
+    console.error("❌ Falha na API da OpenAI:", { status: resp.status, body: errText });
     throw new Error(`Falha na transcrição: ${resp.status} - ${errText}`);
   }
   const data = await resp.json();
+  console.log("✅ Transcrição da OpenAI recebida.");
   return data?.text as string;
 }
 
@@ -156,6 +173,8 @@ serve(async (req) => {
 
   try {
     const body = (await req.json()) as TranscribeRequest;
+    console.log("🎤 Requisição de transcrição recebida:", body);
+
     if (!body?.url) {
       return new Response(JSON.stringify({ error: "URL do áudio é obrigatória" }), {
         status: 400,
@@ -170,7 +189,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
-    console.error("Erro na transcrição:", err);
+    console.error("🔥 Erro na função de transcrição:", err);
     return new Response(JSON.stringify({ error: err?.message || "Erro desconhecido" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

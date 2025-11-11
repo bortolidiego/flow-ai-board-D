@@ -71,6 +71,9 @@ const ChatwootWebhookSchema = z.object({
 interface Attachment {
   id?: number;
   url?: string;
+  data_url?: string;
+  download_url?: string;
+  file_url?: string;
   content_type?: string | null;
   file_type?: string | null;
   filename?: string | null;
@@ -993,9 +996,9 @@ class WebhookHandler {
         });
       }
 
-      const accountId = account?.id || conversation?.id;
+      const accountId = account?.id || conversation?.account?.id;
       if (!accountId) {
-        console.log("❌ Sem account_id");
+        console.log("❌ Sem account_id no webhook. Payload:", JSON.stringify(webhook, null, 2));
         return new Response(JSON.stringify({ error: "Sem account_id" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1020,7 +1023,7 @@ class WebhookHandler {
       }
 
       if (this.shouldIgnoreConversation(integration, conversation)) {
-        console.log("🚫 Conversa ignorada por filtro");
+        console.log("🚫 Conversa ignorada por filtro de inbox");
         return new Response(JSON.stringify({ message: "Conversa ignorada por filtro" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
