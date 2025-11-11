@@ -129,6 +129,7 @@ function isAudioUrlByExtension(url?: string | null): boolean {
     const lower = url.toLowerCase();
     return [
       ".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr",
+      ".mp4", ".ts", ".3gp"
     ].some((ext) => lower.includes(ext));
   } catch {
     return false;
@@ -137,7 +138,19 @@ function isAudioUrlByExtension(url?: string | null): boolean {
 
 function isAudioAttachment(att: any): boolean {
   const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  if (!!ct && (ct === "audio" || ct.startsWith("audio/"))) return true;
+  if (!!ct) {
+    if (ct === "audio" || ct.startsWith("audio/")) return true;
+    if (ct.startsWith("video/")) {
+      const allowedVideoForTranscription = [
+        "video/vnd.dlna.mpeg-tts",
+        "video/mp4",
+        "video/3gpp",
+        "video/webm",
+        "video/ogg",
+      ];
+      if (allowedVideoForTranscription.includes(ct)) return true;
+    }
+  }
   const url = attachmentUrl(att);
   return isAudioUrlByExtension(url);
 }
@@ -278,13 +291,16 @@ async function fetchChatwootMessageAttachments(
   if (!result.ok) return [];
   const msg = result.json;
   const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
-  const normalized = rawAttachments.map((att: any) => ({
-    id: att?.id,
-    url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
-    content_type: att?.content_type || null,
-    file_type: att?.file_type || null,
-    filename: att?.filename || null,
-  })).filter((a: any) => !!a.url);
+  const normalized = rawAttachments.map((att: any) => {
+    const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
+    return {
+      id: att?.id,
+      url: rawUrl ? normalizeUrl(rawUrl, chatwootUrl) : undefined,
+      content_type: att?.content_type || null,
+      file_type: att?.file_type || null,
+      filename: att?.filename || null,
+    };
+  }).filter((a: any) => !!a.url);
   console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
   return normalized;
 }
@@ -309,13 +325,16 @@ async function fetchChatwootConversationMessageAttachments(
   for (let i = msgs.length - 1; i >= 0; i--) {
     const m = msgs[i];
     const rawAttachments = Array.isArray(m?.attachments) ? m.attachments : [];
-    const normalized = rawAttachments.map((att: any) => ({
-      id: att?.id,
-      url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
-      content_type: att?.content_type || null,
-      file_type: att?.file_type || null,
-      filename: att?.filename || null,
-    })).filter((a: any) => !!a.url);
+    const normalized = rawAttachments.map((att: any) => {
+      const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
+      return {
+        id: att?.id,
+        url: rawUrl ? normalizeUrl(rawUrl, chatwootUrl) : undefined,
+        content_type: att?.content_type || null,
+        file_type: att?.file_type || null,
+        filename: att?.filename || null,
+      };
+    }).filter((a: any) => !!a.url);
     if (normalized.length > 0) {
       console.log("Anexos obtidos via histórico da conversa", { count: normalized.length });
       return normalized;
@@ -523,7 +542,8 @@ serve(async (req) => {
 
       const attachmentEntries: any[] = [];
       for (const att of attachments) {
-        const url = attachmentUrl(att);
+        let url = attachmentUrl(att);
+        url = normalizeUrl(url || "", integrationCheck?.chatwoot_url);
         const name = (url || "").split("/").pop() || `anexo-${att?.id || ""}`;
         if (!url) continue;
 
@@ -646,7 +666,8 @@ serve(async (req) => {
 
     const attachmentEntries: any[] = [];
     for (const att of attachments) {
-      const url = attachmentUrl(att);
+      let url = attachmentUrl(att);
+      url = normalizeUrl(url || "", integrationCheck?.chatwoot_url);
       const name = (url || "").split("/").pop() || `anexo-${att?.id || ""}`;
       if (!url) continue;
 
