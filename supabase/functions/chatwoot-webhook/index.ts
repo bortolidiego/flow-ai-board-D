@@ -38,10 +38,10 @@ const ChatwootWebhookSchema = z.object({
         email: z.string().email().max(255).optional().nullable(),
       }).optional(),
     }).optional(),
-    created_at: z.union([z.string(), z.number()]).optional().nullable(),
+    created_at: z.any().optional().nullable(),
   }).optional(),
   message_type: z.enum(["incoming", "outgoing"]).optional(),
-  content: z.string().max(50000).optional(),
+  content: z.string().max(50000).optional().nullable(),
   sender: z.object({
     type: z.string().max(50).optional(), // "User" | "Contact" | ...
     name: z.string().max(200).optional(),
@@ -54,14 +54,14 @@ const ChatwootWebhookSchema = z.object({
   message: z.object({
     id: z.number(),
     message_type: z.enum(["incoming","outgoing"]).optional(),
-    content: z.string().max(50000).optional(),
+    content: z.string().max(50000).optional().nullable(),
     private: z.boolean().optional(),
     sender: z.object({
       type: z.string().max(50).optional(),
       name: z.string().max(200).optional(),
       email: z.string().email().max(255).optional().nullable(),
     }).optional().nullable(),
-    created_at: z.union([z.string(), z.number()]).optional().nullable(),
+    created_at: z.any().optional().nullable(),
     attachments: z.array(AttachmentSchema).optional().nullable(),
   }).optional(),
 });
