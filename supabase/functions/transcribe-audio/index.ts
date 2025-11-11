@@ -23,8 +23,8 @@ function normalizeContentType(ct?: string | null): string {
   if (!val) return "audio/mpeg";
   if (val.startsWith("audio/") || val === "audio") return ct!;
   // Muitos áudios do WhatsApp/Chatwoot chegam como TS de vídeo
-  if (val === "video/vnd.dlna.mpeg-tts" || val === "video/mp2t" || val === "video/mpeg" || val === "application/octet-stream") {
-    console.log("✅ Convertendo content-type TS para audio/mpeg:", val);
+  if (val.startsWith("video/vnd.dlna.mpeg-tts") || val.startsWith("video/mp2t") || val.startsWith("video/mpeg") || val.startsWith("application/octet-stream")) {
+    console.log("✅ Convertendo content-type de vídeo/binário para audio/mpeg:", val);
     return "audio/mpeg";
   }
   // fallback seguro

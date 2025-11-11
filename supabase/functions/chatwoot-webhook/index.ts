@@ -395,7 +395,7 @@ class AttachmentProcessor {
       return true;
     }
     // Alguns áudios .ts chegam como vídeo (WhatsApp/Chatwoot)
-    if (ct === "video/vnd.dlna.mpeg-tts" || ct === "video/mp2t") {
+    if (ct.startsWith("video/vnd.dlna.mpeg-tts") || ct.startsWith("video/mp2t")) {
       console.log("✅ Tratando content_type de vídeo TS como áudio:", ct);
       return true;
     }
