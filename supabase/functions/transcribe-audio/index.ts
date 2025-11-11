@@ -16,19 +16,32 @@ type TranscribeRequest = {
 };
 
 async function fetchAudio(url: string, apiKey?: string | null) {
-  // Tenta com cabeçalho, se fornecido; caso não, tenta sem headers.
+  // Tenta com cabeçalho; depois sem cabeçalho; por fim adiciona api_access_token na query
   const headers: Record<string, string> = {};
   if (apiKey) {
-    // Alguns deployments do Chatwoot aceitam 'api_access_token' como header
     headers["api_access_token"] = apiKey!;
-    // Em outros, Authorization Bearer pode funcionar; manter ambos não atrapalha.
     headers["Authorization"] = `Bearer ${apiKey}`;
   }
+
+  // 1) Tenta com headers
   let res = await fetch(url, { headers });
+
+  // 2) Fallback sem headers
   if (!res.ok) {
-    // fallback sem headers
     res = await fetch(url);
   }
+
+  // 3) Fallback com token na query
+  if (!res.ok && apiKey) {
+    try {
+      const u = new URL(url);
+      u.searchParams.set("api_access_token", apiKey!);
+      res = await fetch(u.toString());
+    } catch {
+      // Se a URL não for válida, ignora e segue para erro
+    }
+  }
+
   if (!res.ok) {
     throw new Error(`Falha ao baixar áudio (${res.status})`);
   }

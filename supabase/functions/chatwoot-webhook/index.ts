@@ -126,23 +126,25 @@ function buildSender(senderType?: string, messageType?: string) {
 }
 
 function attachmentUrl(att: any): string | undefined {
-  return att?.data_url || att?.download_url || att?.url || undefined;
+  return att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
 }
 
 function isAudioAttachment(att: any): boolean {
   const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  return !!ct && ct.startsWith("audio/");
+  return !!ct && (ct === "audio" || ct.startsWith("audio/"));
 }
 
 function isImageAttachment(att: any): boolean {
   const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  return !!ct && ct.startsWith("image/");
+  return !!ct && (ct === "image" || ct.startsWith("image/"));
 }
 
 function isFileAttachment(att: any): boolean {
   const ct = (att?.content_type || att?.file_type || "").toLowerCase();
+  const isAudio = !!ct && (ct === "audio" || ct.startsWith("audio/"));
+  const isImage = !!ct && (ct === "image" || ct.startsWith("image/"));
   // qualquer coisa que não seja imagem/áudio tratamos como arquivo genérico
-  return !!ct && !(ct.startsWith("audio/") || ct.startsWith("image/"));
+  return !!ct && !(isAudio || isImage);
 }
 
 function renderDescriptionFromLog(log: any[]): string {
