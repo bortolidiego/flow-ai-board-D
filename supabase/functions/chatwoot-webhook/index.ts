@@ -28,7 +28,7 @@ const ChatwootWebhookSchema = z.object({
       }).optional(),
     }).optional(),
   }).optional(),
-  message_type: z.enum(["incoming", "outgoing"]).optional(),
+  message_type: z.enum(["incoming", "outgoing", "template"]).optional(),
   content: z.string().max(50000).optional(),
   sender: z.object({
     type: z.string().max(50).optional(),
@@ -41,7 +41,7 @@ const ChatwootWebhookSchema = z.object({
   private: z.boolean().optional(),
   message: z.object({
     id: z.number(),
-    message_type: z.enum(["incoming","outgoing"]).optional(),
+    message_type: z.enum(["incoming","outgoing","template"]).optional(),
     content: z.string().max(50000).optional(),
     private: z.boolean().optional(),
     sender: z.object({
@@ -122,7 +122,8 @@ serve(async (req) => {
 
     const { event, conversation, message_type, content: rawContent, sender, account, message } = webhook;
     const messageId = message?.id?.toString();
-    const derivedMessageType = message?.message_type || message_type;
+    const derivedMessageTypeRaw = message?.message_type || message_type;
+    const derivedMessageType = derivedMessageTypeRaw === "template" ? "outgoing" : derivedMessageTypeRaw;
     const raw = message?.content ?? rawContent;
     const content = raw ? sanitizeHTML(raw) : undefined;
     const isPrivate = (message?.private ?? webhook.private) === true;
