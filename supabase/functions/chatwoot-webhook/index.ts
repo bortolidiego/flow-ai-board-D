@@ -5,11 +5,13 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
+// Constants
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Schemas
 const AttachmentSchema = z.object({
   id: z.number().optional(),
   content_type: z.string().optional().nullable(),
@@ -65,373 +67,548 @@ const ChatwootWebhookSchema = z.object({
   }).optional(),
 });
 
-// Conversão simples de HTML em texto seguro preservando quebras de linha e links
-function htmlToText(input: string | undefined): string {
-  if (!input) return "";
-  let s = input;
-  s = s.replace(/<\s*br\s*\/?>/gi, "\n").replace(/<\/\s*p\s*>/gi, "\n");
-  s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)");
-  s = s.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
-  s = s.replace(/on\w+\s*=\s*["'][^"']*["']/gi, "");
-  s = s.replace(/on\w+\s*=\s*[^\s>]*/gi, "");
-  s = s.replace(/javascript:/gi, "");
-  s = s.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, "");
-  s = s.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
-  return s;
+// Types
+interface Attachment {
+  id?: number;
+  url?: string;
+  content_type?: string | null;
+  file_type?: string | null;
+  filename?: string | null;
 }
 
-function normalizeTimestamp(ts?: string | number | null): string {
-  try {
-    if (typeof ts === "number") {
-      const ms = ts < 1e12 ? ts * 1000 : ts;
-      return new Date(ms).toISOString();
-    }
-    if (typeof ts === "string" && ts) {
-      const d = new Date(ts);
-      return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
-    }
-    return new Date().toISOString();
-  } catch {
-    return new Date().toISOString();
-  }
+interface ProcessedAttachment {
+  type: "audio" | "image" | "file";
+  name: string;
+  url: string;
+  content_type?: string | null;
+  transcript?: string;
 }
 
-function formatTimestamp(ts?: string | number | null) {
-  try {
-    let d: Date;
-    if (typeof ts === "number") {
-      const ms = ts < 1e12 ? ts * 1000 : ts;
-      d = new Date(ms);
-    } else {
-      d = ts ? new Date(ts) : new Date();
-    }
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-  } catch {
-    const d = new Date();
-    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-  }
+interface ChatMessage {
+  id?: string;
+  timestamp: string;
+  sender_label: string;
+  sender_role: "agent" | "contact";
+  sender_name: string;
+  content: string;
+  attachments: ProcessedAttachment[];
 }
 
-function buildSender(senderType?: string, messageType?: string) {
-  const isAgent = senderType === "User" || messageType === "outgoing";
-  const label = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-  const role = isAgent ? "agent" : "contact";
-  return { label, role };
-}
-
-function attachmentUrl(att: any): string | undefined {
-  return att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
-}
-
-function isAudioUrlByExtension(url?: string | null): boolean {
-  if (!url) return false;
-  try {
-    const lower = url.toLowerCase();
-    return [
-      ".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr",
-      ".mp4", ".ts", ".3gp"
-    ].some((ext) => lower.includes(ext));
-  } catch {
-    return false;
-  }
-}
-
-function isAudioAttachment(att: any): boolean {
-  const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  if (!!ct) {
-    if (ct === "audio" || ct.startsWith("audio/")) return true;
-    if (ct.startsWith("video/")) {
-      const allowedVideoForTranscription = [
-        "video/vnd.dlna.mpeg-tts",
-        "video/mp4",
-        "video/3gpp",
-        "video/webm",
-        "video/ogg",
-      ];
-      if (allowedVideoForTranscription.includes(ct)) return true;
-    }
-  }
-  const url = attachmentUrl(att);
-  return isAudioUrlByExtension(url);
-}
-
-function isImageAttachment(att: any): boolean {
-  const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  return !!ct && (ct === "image" || ct.startsWith("image/"));
-}
-
-function isFileAttachment(att: any): boolean {
-  const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-  const isAudio = !!ct && (ct === "audio" || ct.startsWith("audio/"));
-  const isImage = !!ct && (ct === "image" || ct.startsWith("image/"));
-  return !!ct && !(isAudio || isImage);
-}
-
-// Extrai URLs do conteúdo (HTML/texto) para capturar áudios que não vêm em attachments
-function extractUrlsFromContent(raw?: string | null, text?: string | null): string[] {
-  const urls = new Set<string>();
-  const pushMatches = (s?: string | null) => {
-    if (!s) return;
-    try {
-      // 1) URLs absolutas http/https
-      const absoluteRegex = /https?:\/\/[^\s)"']+/g;
-      const absMatches = s.match(absoluteRegex) || [];
-      absMatches.forEach((u) => urls.add(u));
-
-      // 2) href/src de tags com valores absolutos ou relativos
-      const attrRegex = /(href|src)\s*=\s*["']([^"']+)["']/gi;
-      let m: RegExpExecArray | null;
-      while ((m = attrRegex.exec(s)) !== null) {
-        const val = m[2];
-        if (val.startsWith("blob:")) continue;
-        urls.add(val);
-      }
-    } catch {}
+interface IntegrationCheck {
+  active: boolean;
+  account_id: string;
+  chatwoot_api_key: string;
+  chatwoot_url: string;
+  inbox_id?: string;
+  pipeline_id: string;
+  pipelines: {
+    columns: Array<{
+      id: string;
+      name: string;
+      position: number;
+    }>;
   };
-  pushMatches(raw);
-  pushMatches(text);
-  return Array.from(urls);
 }
 
-// Normaliza URL relativa usando base (chatwoot_url)
-function normalizeUrl(u: string, base?: string | null): string {
-  if (!u) return u;
-  try {
-    if (u.startsWith("http://") || u.startsWith("https://")) return u;
-    if (base && u.startsWith("/")) {
-      return `${base}${u}`;
-    }
-    return u;
-  } catch {
-    return u;
+// Utility Functions
+class TextUtils {
+  static htmlToText(input: string | undefined): string {
+    if (!input) return "";
+    let s = input;
+    s = s.replace(/<\s*br\s*\/?>/gi, "\n").replace(/<\/\s*p\s*>/gi, "\n");
+    s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi, "$2 ($1)");
+    s = s.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+    s = s.replace(/on\w+\s*=\s*["'][^"']*["']/gi, "");
+    s = s.replace(/on\w+\s*=\s*[^\s>]*/gi, "");
+    s = s.replace(/javascript:/gi, "");
+    s = s.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, "");
+    s = s.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+    return s;
   }
-}
 
-function renderDescriptionFromLog(log: any[]): string {
-  const lines: string[] = [];
-  for (const m of log) {
-    const base = `[${formatTimestamp(m.timestamp)}] ${m.sender_label} ${m.sender_name}: ${m.content || ""}`.trim();
-    if (base) lines.push(base);
-    if (m.attachments && m.attachments.length > 0) {
-      for (const a of m.attachments) {
-        if (a.type === "audio") {
-          const audioLine = `[Áudio] ${a.name || "arquivo"}${a.transcript ? ` — Transcrição: ${a.transcript}` : ""}${a.url ? ` (${a.url})` : ""}`;
-          lines.push(audioLine);
-        } else if (a.type === "image") {
-          const imgLine = `[Imagem] ${a.name || "arquivo"}${a.url ? ` (${a.url})` : ""}`;
-          lines.push(imgLine);
-        } else {
-          const fileLine = `[Arquivo] ${a.name || "arquivo"} (${a.content_type || "desconhecido"})${a.url ? ` (${a.url})` : ""}`;
-          lines.push(fileLine);
-        }
-      }
-    }
-  }
-  return lines.join("\n");
-}
-
-function computePriority(allText: string): "low" | "medium" | "high" {
-  const s = (allText || "").toLowerCase();
-  if (s.includes("urgente") || s.includes("emergência")) return "high";
-  if (s.includes("dúvida") || s.includes("informação")) return "low";
-  return "medium";
-}
-
-// Helper: tenta múltiplas formas de autenticar contra o Chatwoot
-async function chatwootFetchJson(endpoint: string, apiKey: string | null) {
-  if (!apiKey) return { ok: false, status: 401, json: null };
-  const baseHeaders: Record<string, string> = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-    'User-Agent': 'Supabase-Edge-Function/1.0'
-  };
-
-  const strategies = [
-    { endpoint, headers: { ...baseHeaders, 'api_access_token': apiKey! }, label: 'api_access_token header' },
-    { endpoint, headers: { ...baseHeaders, 'Authorization': `Bearer ${apiKey}` }, label: 'Authorization: Bearer' },
-    { endpoint, headers: { ...baseHeaders, 'Api-Access-Token': apiKey! }, label: 'Api-Access-Token header' },
-    { endpoint: endpoint + (endpoint.includes('?') ? '&' : '?') + 'api_access_token=' + encodeURIComponent(apiKey!), headers: baseHeaders, label: 'api_access_token query' },
-  ];
-
-  for (const s of strategies) {
+  static normalizeTimestamp(ts?: string | number | null): string {
     try {
-      const res = await fetch(s.endpoint, { headers: s.headers });
-      if (res.ok) {
-        const json = await res.json().catch(() => null);
-        if (json === null) {
-          console.error("Chatwoot retornou resposta não JSON para", s.label);
-        } else {
-          console.log("Chatwoot OK via", s.label);
-        }
-        return { ok: true, status: res.status, json };
+      if (typeof ts === "number") {
+        const ms = ts < 1e12 ? ts * 1000 : ts;
+        return new Date(ms).toISOString();
+      }
+      if (typeof ts === "string" && ts) {
+        const d = new Date(ts);
+        return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+      }
+      return new Date().toISOString();
+    } catch {
+      return new Date().toISOString();
+    }
+  }
+
+  static formatTimestamp(ts?: string | number | null): string {
+    try {
+      let d: Date;
+      if (typeof ts === "number") {
+        const ms = ts < 1e12 ? ts * 1000 : ts;
+        d = new Date(ms);
       } else {
-        const text = await res.text().catch(() => "");
-        console.error("Chatwoot falhou", { url: s.endpoint, label: s.label, status: res.status, body: text?.slice(0, 500) });
+        d = ts ? new Date(ts) : new Date();
       }
-    } catch (e) {
-      console.error("Erro na tentativa de autenticação Chatwoot", { label: s.label, error: String(e) });
+      return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+    } catch {
+      const d = new Date();
+      return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
     }
   }
 
-  return { ok: false, status: 401, json: null };
-}
+  static extractUrlsFromContent(raw?: string | null, text?: string | null): string[] {
+    const urls = new Set<string>();
+    const pushMatches = (s?: string | null) => {
+      if (!s) return;
+      try {
+        const absoluteRegex = /https?:\/\/[^\s)"']+/g;
+        const absMatches = s.match(absoluteRegex) || [];
+        absMatches.forEach((u) => urls.add(u));
 
-// Busca anexos de uma mensagem na API do Chatwoot para obter URLs válidas
-async function fetchChatwootMessageAttachments(
-  chatwootUrl: string,
-  apiKey: string | null,
-  accountId: string | number,
-  conversationId: number,
-  messageId?: number
-): Promise<any[]> {
-  if (!chatwootUrl || !apiKey || !accountId || !conversationId || !messageId) return [];
-  const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages/${messageId}`;
-  console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
-  const result = await chatwootFetchJson(endpoint, apiKey);
-  if (!result.ok) return [];
-  const msg = result.json;
-  const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
-  const normalized = rawAttachments.map((att: any) => {
-    const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
-    return {
-      id: att?.id,
-      url: rawUrl ? normalizeUrl(rawUrl, chatwootUrl) : undefined,
-      content_type: att?.content_type || null,
-      file_type: att?.file_type || null,
-      filename: att?.filename || null,
+        const attrRegex = /(href|src)\s*=\s*["']([^"']+)["']/gi;
+        let m: RegExpExecArray | null;
+        while ((m = attrRegex.exec(s)) !== null) {
+          const val = m[2];
+          if (val.startsWith("blob:")) continue;
+          urls.add(val);
+        }
+      } catch {}
     };
-  }).filter((a: any) => !!a.url);
-  console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
-  return normalized;
+    pushMatches(raw);
+    pushMatches(text);
+    return Array.from(urls);
+  }
+
+  static normalizeUrl(u: string, base?: string | null): string {
+    if (!u) return u;
+    try {
+      if (u.startsWith("http://") || u.startsWith("https://")) return u;
+      if (base && u.startsWith("/")) {
+        return `${base}${u}`;
+      }
+      return u;
+    } catch {
+      return u;
+    }
+  }
+
+  static computePriority(allText: string): "low" | "medium" | "high" {
+    const s = (allText || "").toLowerCase();
+    if (s.includes("urgente") || s.includes("emergência")) return "high";
+    if (s.includes("dúvida") || s.includes("informação")) return "low";
+    return "medium";
+  }
 }
 
-// Fallback: buscar mensagens da conversa e coletar anexos do último item com anexos
-async function fetchChatwootConversationMessageAttachments(
-  chatwootUrl: string,
-  apiKey: string | null,
-  accountId: string | number,
-  conversationId: number
-): Promise<any[]> {
-  if (!chatwootUrl || !apiKey || !accountId || !conversationId) return [];
-  const endpoint = `${chatwootUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-  console.log("Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
-  const result = await chatwootFetchJson(endpoint, apiKey);
-  if (!result.ok) {
-    console.error("Falha ao obter mensagens via Chatwoot API", { status: result.status });
-    return [];
+// Chatwoot API Client
+class ChatwootAPIClient {
+  private apiKey: string;
+  private baseUrl: string;
+
+  constructor(apiKey: string, baseUrl: string) {
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
   }
-  const msgs = result.json;
-  if (!Array.isArray(msgs)) return [];
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    const rawAttachments = Array.isArray(m?.attachments) ? m.attachments : [];
-    const normalized = rawAttachments.map((att: any) => {
+
+  private async fetchJson(endpoint: string): Promise<{ ok: boolean; status: number; json: any }> {
+    const baseHeaders: Record<string, string> = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'Supabase-Edge-Function/1.0'
+    };
+
+    const strategies = [
+      { endpoint, headers: { ...baseHeaders, 'api_access_token': this.apiKey }, label: 'api_access_token header' },
+      { endpoint, headers: { ...baseHeaders, 'Authorization': `Bearer ${this.apiKey}` }, label: 'Authorization: Bearer' },
+      { endpoint, headers: { ...baseHeaders, 'Api-Access-Token': this.apiKey }, label: 'Api-Access-Token header' },
+      { endpoint: endpoint + (endpoint.includes('?') ? '&' : '?') + 'api_access_token=' + encodeURIComponent(this.apiKey), headers: baseHeaders, label: 'api_access_token query' },
+    ];
+
+    for (const strategy of strategies) {
+      try {
+        const res = await fetch(strategy.endpoint, { headers: strategy.headers });
+        if (res.ok) {
+          const json = await res.json().catch(() => null);
+          if (json === null) {
+            console.error("Chatwoot retornou resposta não JSON para", strategy.label);
+          } else {
+            console.log("Chatwoot OK via", strategy.label);
+          }
+          return { ok: true, status: res.status, json };
+        } else {
+          const text = await res.text().catch(() => "");
+          console.error("Chatwoot falhou", { url: strategy.endpoint, label: strategy.label, status: res.status, body: text?.slice(0, 500) });
+        }
+      } catch (e) {
+        console.error("Erro na tentativa de autenticação Chatwoot", { label: strategy.label, error: String(e) });
+      }
+    }
+
+    return { ok: false, status: 401, json: null };
+  }
+
+  async getMessageAttachments(accountId: string, conversationId: number, messageId: number): Promise<Attachment[]> {
+    const endpoint = `${this.baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages/${messageId}`;
+    console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
+    
+    const result = await this.fetchJson(endpoint);
+    if (!result.ok) return [];
+
+    const msg = result.json;
+    const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
+    
+    const normalized = rawAttachments.map((att: any): Attachment => {
       const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
       return {
         id: att?.id,
-        url: rawUrl ? normalizeUrl(rawUrl, chatwootUrl) : undefined,
+        url: rawUrl ? TextUtils.normalizeUrl(rawUrl, this.baseUrl) : undefined,
         content_type: att?.content_type || null,
         file_type: att?.file_type || null,
         filename: att?.filename || null,
       };
-    }).filter((a: any) => !!a.url);
-    if (normalized.length > 0) {
-      console.log("Anexos obtidos via histórico da conversa", { count: normalized.length });
-      return normalized;
-    }
+    }).filter((a: Attachment) => !!a.url);
+
+    console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
+    return normalized;
   }
-  return [];
+
+  async getConversationMessageAttachments(accountId: string, conversationId: number): Promise<Attachment[]> {
+    const endpoint = `${this.baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
+    console.log("Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
+    
+    const result = await this.fetchJson(endpoint);
+    if (!result.ok) {
+      console.error("Falha ao obter mensagens via Chatwoot API", { status: result.status });
+      return [];
+    }
+
+    const msgs = result.json;
+    if (!Array.isArray(msgs)) return [];
+
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      const rawAttachments = Array.isArray(m?.attachments) ? m.attachments : [];
+      
+      const normalized = rawAttachments.map((att: any): Attachment => {
+        const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
+        return {
+          id: att?.id,
+          url: rawUrl ? TextUtils.normalizeUrl(rawUrl, this.baseUrl) : undefined,
+          content_type: att?.content_type || null,
+          file_type: att?.file_type || null,
+          filename: att?.filename || null,
+        };
+      }).filter((a: Attachment) => !!a.url);
+
+      if (normalized.length > 0) {
+        console.log("Anexos obtidos via histórico da conversa", { count: normalized.length });
+        return normalized;
+      }
+    }
+    return [];
+  }
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+// Attachment Processor
+class AttachmentProcessor {
+  private static readonly AUDIO_EXTENSIONS = [".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr", ".mp4", ".ts", ".3gp"];
+  private static readonly VIDEO_AUDIO_TYPES = ["video/vnd.dlna.mpeg-tts", "video/mp4", "video/3gpp", "video/webm", "video/ogg"];
+
+  private static attachmentUrl(att: Attachment): string | undefined {
+    return att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
   }
 
-  try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const rawWebhook = await req.json();
-    const webhook = ChatwootWebhookSchema.parse(rawWebhook);
-    const { event, conversation, message, message_type, content: rawContent, sender, account } = webhook;
-
-    if (["message_created", "message_updated"].includes(event) && (message?.private ?? webhook.private) === true) {
-      return new Response(JSON.stringify({ message: "Mensagem privada ignorada" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+  private static isAudioUrlByExtension(url?: string | null): boolean {
+    if (!url) return false;
+    try {
+      const lower = url.toLowerCase();
+      return this.AUDIO_EXTENSIONS.some((ext) => lower.includes(ext));
+    } catch {
+      return false;
     }
-    const effectiveSender = message?.sender ?? sender;
-    if (["message_created", "message_updated"].includes(event) && effectiveSender?.type === "captain_assistant") {
-      return new Response(JSON.stringify({ message: "Mensagem de bot ignorada" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+  }
+
+  private static isAudioAttachment(att: Attachment): boolean {
+    const ct = (att?.content_type || att?.file_type || "").toLowerCase();
+    if (!!ct) {
+      if (ct === "audio" || ct.startsWith("audio/")) return true;
+      if (ct.startsWith("video/") && this.VIDEO_AUDIO_TYPES.includes(ct)) return true;
+    }
+    const url = this.attachmentUrl(att);
+    return this.isAudioUrlByExtension(url);
+  }
+
+  private static isImageAttachment(att: Attachment): boolean {
+    const ct = (att?.content_type || att?.file_type || "").toLowerCase();
+    return !!ct && (ct === "image" || ct.startsWith("image/"));
+  }
+
+  private static isFileAttachment(att: Attachment): boolean {
+    const ct = (att?.content_type || att?.file_type || "").toLowerCase();
+    const isAudio = !!ct && (ct === "audio" || ct.startsWith("audio/"));
+    const isImage = !!ct && (ct === "image" || ct.startsWith("image/"));
+    return !!ct && !(isAudio || isImage);
+  }
+
+  static async processAttachments(
+    attachments: Attachment[],
+    supabase: any,
+    supabaseKey: string,
+    chatwootApiKey?: string | null
+  ): Promise<ProcessedAttachment[]> {
+    const processed: ProcessedAttachment[] = [];
+
+    for (const att of attachments) {
+      let url = this.attachmentUrl(att);
+      if (!url) continue;
+
+      const name = url.split("/").pop() || `anexo-${att?.id || ""}`;
+      const contentType = att?.content_type || att?.file_type || null;
+
+      console.log("Processando anexo", { url, content_type: contentType, file_type: att?.file_type });
+
+      if (this.isAudioAttachment(att)) {
+        let transcript: string | undefined = undefined;
+        try {
+          console.log("Invocando transcribe-audio", { url, content_type: contentType });
+          const { data, error } = await supabase.functions.invoke("transcribe-audio", {
+            body: {
+              url,
+              content_type: contentType,
+              chatwoot_api_key: chatwootApiKey || null,
+            },
+            headers: { Authorization: `Bearer ${supabaseKey}` },
+          });
+          if (!error && data?.transcript) transcript = data.transcript;
+        } catch (err) {
+          console.error("Transcrição falhou:", err);
+        }
+        processed.push({ type: "audio", name, url, content_type: contentType, transcript });
+      } else if (this.isImageAttachment(att)) {
+        processed.push({ type: "image", name, url, content_type: contentType });
+      } else {
+        processed.push({ type: "file", name, url, content_type: contentType });
+      }
     }
 
-    const accountId = account?.id || conversation?.id;
-    if (!accountId) {
-      return new Response(JSON.stringify({ error: "Sem account_id" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    return processed;
+  }
+}
 
-    const { data: integrationCheck, error: integrationError } = await supabase
+// Message Builder
+class MessageBuilder {
+  static buildSender(senderType?: string, messageType?: string): { label: string; role: "agent" | "contact" } {
+    const isAgent = senderType === "User" || messageType === "outgoing";
+    const label = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
+    const role = isAgent ? "agent" : "contact";
+    return { label, role };
+  }
+
+  static renderDescriptionFromLog(log: ChatMessage[]): string {
+    const lines: string[] = [];
+    for (const m of log) {
+      const base = `[${TextUtils.formatTimestamp(m.timestamp)}] ${m.sender_label} ${m.sender_name}: ${m.content || ""}`.trim();
+      if (base) lines.push(base);
+      
+      if (m.attachments && m.attachments.length > 0) {
+        for (const a of m.attachments) {
+          if (a.type === "audio") {
+            const audioLine = `[Áudio] ${a.name}${a.transcript ? ` — Transcrição: ${a.transcript}` : ""} (${a.url})`;
+            lines.push(audioLine);
+          } else if (a.type === "image") {
+            const imgLine = `[Imagem] ${a.name} (${a.url})`;
+            lines.push(imgLine);
+          } else {
+            const fileLine = `[Arquivo] ${a.name} (${a.content_type || "desconhecido"}) (${a.url})`;
+            lines.push(fileLine);
+          }
+        }
+      }
+    }
+    return lines.join("\n");
+  }
+
+  static createChatMessage(
+    messageId: string | undefined,
+    timestamp: string,
+    senderLabel: string,
+    senderRole: "agent" | "contact",
+    senderName: string,
+    content: string,
+    attachments: ProcessedAttachment[]
+  ): ChatMessage {
+    return {
+      id: messageId,
+      timestamp,
+      sender_label: senderLabel,
+      sender_role: senderRole,
+      sender_name: senderName,
+      content,
+      attachments,
+    };
+  }
+}
+
+// Card Manager
+class CardManager {
+  static async findExistingCard(supabase: any, conversationId: number): Promise<any> {
+    const { data } = await supabase
+      .from("cards")
+      .select("id, description, priority, assignee, chatwoot_contact_name, chatwoot_contact_email, chatwoot_agent_name, updated_at, completion_type, customer_profile_id, custom_fields_data")
+      .eq("chatwoot_conversation_id", conversationId.toString())
+      .is("completion_type", null)
+      .maybeSingle();
+    return data;
+  }
+
+  static async updateCard(supabase: any, cardId: string, updateData: any): Promise<{ error?: any }> {
+    return await supabase.from("cards").update(updateData).eq("id", cardId);
+  }
+
+  static async createCard(supabase: any, cardData: any): Promise<{ data?: any; error?: any }> {
+    return await supabase.from("cards").insert(cardData).select().single();
+  }
+
+  static async getCustomerProfileId(supabase: any, conversationId: number): Promise<string | null> {
+    const { data } = await supabase
+      .from("cards")
+      .select("customer_profile_id")
+      .eq("chatwoot_conversation_id", conversationId.toString())
+      .not("completion_type", "is", null)
+      .maybeSingle();
+    return data?.customer_profile_id || null;
+  }
+
+  static async incrementCustomerStats(supabase: any, profileId: string): Promise<void> {
+    await supabase.rpc("increment_customer_stat", { profile_id: profileId, stat_field: "total_interactions" });
+    await supabase.from("customer_profiles").update({ last_contact_at: new Date().toISOString() }).eq("id", profileId);
+  }
+}
+
+// Webhook Handler
+class WebhookHandler {
+  private supabase: any;
+  private supabaseKey: string;
+
+  constructor(supabaseUrl: string, supabaseKey: string) {
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.supabaseKey = supabaseKey;
+  }
+
+  private async validateIntegration(accountId: string): Promise<IntegrationCheck | null> {
+    const { data: integrationCheck, error } = await this.supabase
       .from("chatwoot_integrations")
       .select("active, account_id, chatwoot_api_key, chatwoot_url, inbox_id, pipeline_id, pipelines(id, columns(id, name, position))")
       .eq("account_id", String(accountId))
       .maybeSingle();
 
-    if (integrationError) {
-      console.error("Erro checando integração:", integrationError);
-      return new Response(JSON.stringify({ error: "Falha ao checar integração" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (error || !integrationCheck) {
+      console.error("Erro checando integração:", error);
+      return null;
     }
 
-    if (!integrationCheck) {
-      return new Response(JSON.stringify({ message: "Sem integração para esta conta" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    return integrationCheck as IntegrationCheck;
+  }
+
+  private shouldIgnoreMessage(webhook: any): boolean {
+    const { event, message, private: isPrivate } = webhook;
+    
+    if (["message_created", "message_updated"].includes(event) && (message?.private ?? isPrivate) === true) {
+      return true;
     }
 
-    if (!integrationCheck.active) {
-      return new Response(JSON.stringify({ message: "Integração pausada" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    const effectiveSender = message?.sender ?? webhook.sender;
+    if (["message_created", "message_updated"].includes(event) && effectiveSender?.type === "captain_assistant") {
+      return true;
     }
 
+    return false;
+  }
+
+  private shouldIgnoreConversation(integration: IntegrationCheck, conversation: any): boolean {
     const conversationInboxId = conversation?.inbox_id?.toString();
+    
     if (conversationInboxId) {
-      const allowedInboxIds = (integrationCheck.inbox_id || "")
+      const allowedInboxIds = (integration.inbox_id || "")
         .split(",")
         .map((id: string) => id.trim())
         .filter((id: string) => !!id);
       if (allowedInboxIds.length > 0 && !allowedInboxIds.includes(conversationInboxId)) {
-        return new Response(JSON.stringify({ message: "Conversa ignorada por filtro de inbox", received_inbox: conversationInboxId }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return true;
       }
-    } else if (integrationCheck.inbox_id) {
-      return new Response(JSON.stringify({ message: "Conversa ignorada por falta de inbox_id" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    } else if (integration.inbox_id) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private async triggerAIAnalysis(cardId: string): Promise<void> {
+    try {
+      await this.supabase.functions.invoke("analyze-conversation", {
+        body: { cardId },
+        headers: { Authorization: `Bearer ${this.supabaseKey}` },
       });
+    } catch (err) {
+      console.error("Falha ao disparar análise de IA:", err);
+    }
+  }
+
+  private async fetchAttachments(
+    integration: IntegrationCheck,
+    conversation: any,
+    message: any,
+    baseAttachments: any[]
+  ): Promise<Attachment[]> {
+    const chatwootClient = new ChatwootAPIClient(integration.chatwoot_api_key, integration.chatwoot_url);
+    let attachments: Attachment[] = [];
+
+    // Try to fetch from message if attachments are missing URLs
+    if (
+      (baseAttachments.length === 0 || baseAttachments.some((a: any) => !AttachmentProcessor['attachmentUrl'](a))) &&
+      conversation?.id && message?.id
+    ) {
+      try {
+        attachments = await chatwootClient.getMessageAttachments(
+          String(integration.account_id),
+          conversation.id,
+          message.id
+        );
+      } catch (e) {
+        console.error("Falha ao buscar anexos da mensagem:", e);
+      }
     }
 
-    let existingCard: any = null;
-    if (["message_created", "message_updated", "conversation_updated"].includes(event) && conversation?.id) {
-      const result = await supabase
-        .from("cards")
-        .select("id, description, priority, assignee, chatwoot_contact_name, chatwoot_contact_email, chatwoot_agent_name, updated_at, completion_type, customer_profile_id, custom_fields_data")
-        .eq("chatwoot_conversation_id", conversation.id.toString())
-        .is("completion_type", null)
-        .maybeSingle();
-      existingCard = result.data;
+    // Fallback to conversation history if still no attachments
+    const baseHasUrls = baseAttachments.some((a: any) => AttachmentProcessor['attachmentUrl'](a));
+    if (
+      !baseHasUrls &&
+      attachments.length === 0 &&
+      conversation?.id
+    ) {
+      try {
+        attachments = await chatwootClient.getConversationMessageAttachments(
+          String(integration.account_id),
+          conversation.id
+        );
+      } catch (e) {
+        console.error("Falha ao buscar anexos do histórico:", e);
+      }
     }
 
-    if (existingCard && event === "conversation_updated") {
+    return attachments;
+  }
+
+  private async handleExistingCard(
+    webhook: any,
+    integration: IntegrationCheck,
+    existingCard: any
+  ): Promise<Response> {
+    const { event, conversation, message, message_type, content: rawContent, sender } = webhook;
+    
+    if (event === "conversation_updated") {
       const updateData: any = {
         assignee: conversation?.assignee?.name || existingCard.assignee,
         chatwoot_contact_name: conversation?.meta?.sender?.name || existingCard.chatwoot_contact_name,
@@ -440,10 +617,10 @@ serve(async (req) => {
       };
       if (conversation?.assignee?.name) updateData.chatwoot_agent_name = conversation.assignee.name;
 
-      const { error: updateError } = await supabase.from("cards").update(updateData).eq("id", existingCard.id);
-      if (updateError) {
-        console.error("Erro atualizando metadados da conversa:", updateError);
-        return new Response(JSON.stringify({ error: updateError.message }), {
+      const { error } = await CardManager.updateCard(this.supabase, existingCard.id, updateData);
+      if (error) {
+        console.error("Erro atualizando metadados da conversa:", error);
+        return new Response(JSON.stringify({ error: error.message }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -453,210 +630,128 @@ serve(async (req) => {
       });
     }
 
-    const triggerAIAnalysis = async (cardId: string) => {
-      try {
-        await supabase.functions.invoke("analyze-conversation", {
-          body: { cardId },
-          headers: { Authorization: `Bearer ${supabaseKey}` },
-        });
-      } catch (err) {
-        console.error("Falha ao disparar análise de IA:", err);
-      }
-    };
-
-    const derivedMessageType = message?.message_type || message_type;
-    const contentText = htmlToText(message?.content ?? rawContent);
-    const chatSender = buildSender(effectiveSender?.type, derivedMessageType);
-    const timestamp = normalizeTimestamp(message?.created_at ?? conversation?.created_at ?? null);
-    const messageId = message?.id?.toString();
-
-    const baseAttachments = (message?.attachments || []) as any[];
-    const contentUrlsRaw = extractUrlsFromContent(message?.content ?? rawContent, contentText);
-    const contentUrls = contentUrlsRaw.map((u) => normalizeUrl(u, integrationCheck?.chatwoot_url));
-
-    let fetchedAttachments: any[] = [];
-    if (
-      ((baseAttachments || []).length === 0 || (baseAttachments || []).some((a: any) => !attachmentUrl(a))) &&
-      integrationCheck?.chatwoot_url && integrationCheck?.chatwoot_api_key && integrationCheck?.account_id &&
-      conversation?.id && message?.id
-    ) {
-      try {
-        fetchedAttachments = await fetchChatwootMessageAttachments(
-          integrationCheck.chatwoot_url,
-          integrationCheck.chatwoot_api_key,
-          String(integrationCheck.account_id),
-          conversation.id,
-          message.id
-        );
-      } catch (e) {
-        console.error("Falha no fallback de anexos pela API do Chatwoot (por messageId):", e);
-      }
-    }
-
-    const baseHasUrls = (baseAttachments || []).some((a: any) => !!attachmentUrl(a));
-    let fetchedConversationAttachments: any[] = [];
-    if (
-      (!baseHasUrls) &&
-      (fetchedAttachments.length === 0) &&
-      (contentUrls.length === 0) &&
-      integrationCheck?.chatwoot_url && integrationCheck?.chatwoot_api_key && integrationCheck?.account_id &&
-      conversation?.id
-    ) {
-      try {
-        fetchedConversationAttachments = await fetchChatwootConversationMessageAttachments(
-          integrationCheck.chatwoot_url,
-          integrationCheck.chatwoot_api_key,
-          String(integrationCheck.account_id),
-          conversation.id
-        );
-      } catch (e) {
-        console.error("Falha no fallback de anexos pela API do Chatwoot (histórico da conversa):", e);
-      }
-    }
-
-    const attachments = [
-      ...(fetchedAttachments.length > 0 ? fetchedAttachments : baseAttachments),
-      ...(fetchedConversationAttachments.length > 0 ? fetchedConversationAttachments : []),
-      ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
-    ] as any[];
-
-    console.log("Anexos detectados para processamento", {
-      baseCount: baseAttachments.length,
-      fetchedCount: fetchedAttachments.length,
-      fetchedConversationCount: fetchedConversationAttachments.length,
-      contentUrlCount: contentUrls.length,
-      total: (attachments || []).length,
-    });
-
-    const existingLog = (existingCard?.custom_fields_data?.chatwoot_messages as any[]) || [];
-    const processedMessageIds = new Set((existingCard?.custom_fields_data?.chatwoot_msg_ids as string[]) || []);
-    const alreadyHasMessage = messageId ? processedMessageIds.has(messageId) : false;
-
-    if (!existingCard && event === "message_updated") {
+    if (event === "message_updated" && !existingCard) {
       return new Response(JSON.stringify({ message: "Update ignorado sem card existente" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (existingCard) {
-      let newLog = [...existingLog];
+    // Process message
+    const effectiveSender = message?.sender ?? sender;
+    const derivedMessageType = message?.message_type || message_type;
+    const contentText = TextUtils.htmlToText(message?.content ?? rawContent);
+    const chatSender = MessageBuilder.buildSender(effectiveSender?.type, derivedMessageType);
+    const timestamp = TextUtils.normalizeTimestamp(message?.created_at ?? conversation?.created_at ?? null);
+    const messageId = message?.id?.toString();
 
-      const attachmentEntries: any[] = [];
-      for (const att of attachments) {
-        let url = attachmentUrl(att);
-        url = normalizeUrl(url || "", integrationCheck?.chatwoot_url);
-        const name = (url || "").split("/").pop() || `anexo-${att?.id || ""}`;
-        if (!url) continue;
+    // Fetch attachments
+    const baseAttachments = (message?.attachments || []) as any[];
+    const contentUrlsRaw = TextUtils.extractUrlsFromContent(message?.content ?? rawContent, contentText);
+    const contentUrls = contentUrlsRaw.map((u) => TextUtils.normalizeUrl(u, integration.chatwoot_url));
 
-        console.log("Processando anexo (update)", {
-          url,
-          content_type: att?.content_type || null,
-          file_type: att?.file_type || null,
-        });
+    const fetchedAttachments = await this.fetchAttachments(integration, conversation, message, baseAttachments);
+    
+    const allAttachments = [
+      ...(fetchedAttachments.length > 0 ? fetchedAttachments : baseAttachments),
+      ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
+    ] as Attachment[];
 
-        if (isAudioAttachment(att)) {
-          let transcript: string | undefined = undefined;
-          try {
-            console.log("Invocando transcribe-audio (update)", {
-              url,
-              content_type: att?.content_type || att?.file_type || null,
-            });
-            const { data, error } = await supabase.functions.invoke("transcribe-audio", {
-              body: {
-                url,
-                content_type: att?.content_type || att?.file_type || null,
-                chatwoot_api_key: integrationCheck?.chatwoot_api_key || null,
-              },
-              headers: { Authorization: `Bearer ${supabaseKey}` },
-            });
-            if (!error && data?.transcript) transcript = data.transcript;
-          } catch (err) {
-            console.error("Transcrição falhou (update):", err);
-          }
-          attachmentEntries.push({ type: "audio", name, url, content_type: att?.content_type || null, transcript });
-        } else if (isImageAttachment(att)) {
-          attachmentEntries.push({ type: "image", name, url, content_type: att?.content_type || null });
-        } else if (isFileAttachment(att)) {
-          attachmentEntries.push({ type: "file", name, url, content_type: att?.content_type || null });
-        } else {
-          attachmentEntries.push({ type: "file", name, url, content_type: att?.content_type || att?.file_type || null });
-        }
+    console.log("Anexos detectados para processamento", {
+      baseCount: baseAttachments.length,
+      fetchedCount: fetchedAttachments.length,
+      contentUrlCount: contentUrls.length,
+      total: allAttachments.length,
+    });
+
+    // Process attachments
+    const processedAttachments = await AttachmentProcessor.processAttachments(
+      allAttachments,
+      this.supabase,
+      this.supabaseKey,
+      integration.chatwoot_api_key
+    );
+
+    // Update message log
+    const existingLog = (existingCard?.custom_fields_data?.chatwoot_messages as ChatMessage[]) || [];
+    const processedMessageIds = new Set((existingCard?.custom_fields_data?.chatwoot_msg_ids as string[]) || []);
+    const alreadyHasMessage = messageId ? processedMessageIds.has(messageId) : false;
+
+    let newLog = [...existingLog];
+    const chatMessage = MessageBuilder.createChatMessage(
+      messageId,
+      timestamp,
+      chatSender.label,
+      chatSender.role,
+      effectiveSender?.name || (chatSender.role === "agent" ? "Atendente" : "Cliente"),
+      contentText,
+      processedAttachments
+    );
+
+    if (event === "message_updated" && alreadyHasMessage) {
+      newLog = newLog.map((m) => (m.id === messageId ? chatMessage : m));
+    } else if (!alreadyHasMessage) {
+      newLog.push(chatMessage);
+      if (messageId) {
+        processedMessageIds.add(messageId);
       }
+    }
 
-      const entry = {
-        id: messageId,
-        timestamp,
-        sender_label: chatSender.label,
-        sender_role: chatSender.role,
-        sender_name: effectiveSender?.name || (chatSender.role === "agent" ? "Atendente" : "Cliente"),
-        content: contentText,
-        attachments: attachmentEntries,
-      };
+    newLog.sort((a, b) => {
+      const ta = new Date(a.timestamp).getTime();
+      const tb = new Date(b.timestamp).getTime();
+      return ta - tb;
+    });
 
-      if (event === "message_updated" && alreadyHasMessage) {
-        newLog = newLog.map((m) => (m.id === messageId ? entry : m));
-      } else if (!alreadyHasMessage) {
-        newLog.push(entry);
-        if (messageId) {
-          processedMessageIds.add(messageId);
-        }
-      }
+    const description = MessageBuilder.renderDescriptionFromLog(newLog);
+    const priority = TextUtils.computePriority(description);
 
-      newLog.sort((a, b) => {
-        const ta = new Date(a.timestamp).getTime();
-        const tb = new Date(b.timestamp).getTime();
-        return ta - tb;
-      });
+    const updateData: any = {
+      description,
+      priority,
+      assignee: conversation?.assignee?.name || existingCard.assignee,
+      updated_at: new Date().toISOString(),
+      custom_fields_data: {
+        ...(existingCard.custom_fields_data || {}),
+        chatwoot_messages: newLog,
+        chatwoot_msg_ids: Array.from(processedMessageIds),
+      },
+    };
+    if (chatSender.role === "agent" && effectiveSender?.name) updateData.chatwoot_agent_name = effectiveSender.name;
 
-      const description = renderDescriptionFromLog(newLog);
-      const priority = computePriority(description);
-
-      const updateData: any = {
-        description,
-        priority,
-        assignee: conversation?.assignee?.name || existingCard.assignee,
-        updated_at: new Date().toISOString(),
-        custom_fields_data: {
-          ...(existingCard.custom_fields_data || {}),
-          chatwoot_messages: newLog,
-          chatwoot_msg_ids: Array.from(processedMessageIds),
-        },
-      };
-      if (chatSender.role === "agent" && effectiveSender?.name) updateData.chatwoot_agent_name = effectiveSender.name;
-
-      const { error: updateError } = await supabase.from("cards").update(updateData).eq("id", existingCard.id);
-      if (updateError) {
-        console.error("Erro atualizando card:", updateError);
-        return new Response(JSON.stringify({ error: updateError.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      triggerAIAnalysis(existingCard.id).catch(() => {});
-      return new Response(JSON.stringify({ message: `Card atualizado (${event})`, cardId: existingCard.id }), {
+    const { error } = await CardManager.updateCard(this.supabase, existingCard.id, updateData);
+    if (error) {
+      console.error("Erro atualizando card:", error);
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    this.triggerAIAnalysis(existingCard.id).catch(() => {});
+    return new Response(JSON.stringify({ message: `Card atualizado (${event})`, cardId: existingCard.id }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  private async handleNewCard(
+    webhook: any,
+    integration: IntegrationCheck
+  ): Promise<Response> {
+    const { conversation, message, message_type, content: rawContent, sender } = webhook;
+    
+    // Get customer profile if exists
     let customerProfileId: string | null = null;
-    if (!existingCard && conversation?.id) {
-      const { data: finalizedCard } = await supabase
-        .from("cards")
-        .select("customer_profile_id")
-        .eq("chatwoot_conversation_id", conversation.id.toString())
-        .not("completion_type", "is", null)
-        .maybeSingle();
-      if (finalizedCard?.customer_profile_id) {
-        customerProfileId = finalizedCard.customer_profile_id;
-        await supabase.rpc("increment_customer_stat", { profile_id: customerProfileId, stat_field: "total_interactions" });
-        await supabase.from("customer_profiles").update({ last_contact_at: new Date().toISOString() }).eq("id", customerProfileId);
+    if (conversation?.id) {
+      customerProfileId = await CardManager.getCustomerProfileId(this.supabase, conversation.id);
+      if (customerProfileId) {
+        await CardManager.incrementCustomerStats(this.supabase, customerProfileId);
       }
     }
 
+    // Find first column
     const firstColumn =
-      (integrationCheck as any).pipelines.columns.find((col: any) => col.name === "Novo Contato") ||
-      (integrationCheck as any).pipelines.columns.sort((a: any, b: any) => a.position - b.position)[0];
+      integration.pipelines.columns.find((col) => col.name === "Novo Contato") ||
+      integration.pipelines.columns.sort((a, b) => a.position - b.position)[0];
 
     if (!firstColumn) {
       return new Response(JSON.stringify({ error: "Sem colunas configuradas" }), {
@@ -665,62 +760,49 @@ serve(async (req) => {
       });
     }
 
-    const attachmentEntries: any[] = [];
-    for (const att of attachments) {
-      let url = attachmentUrl(att);
-      url = normalizeUrl(url || "", integrationCheck?.chatwoot_url);
-      const name = (url || "").split("/").pop() || `anexo-${att?.id || ""}`;
-      if (!url) continue;
+    // Process message data
+    const effectiveSender = message?.sender ?? sender;
+    const derivedMessageType = message?.message_type || message_type;
+    const contentText = TextUtils.htmlToText(message?.content ?? rawContent);
+    const chatSender = MessageBuilder.buildSender(effectiveSender?.type, derivedMessageType);
+    const timestamp = TextUtils.normalizeTimestamp(message?.created_at ?? conversation?.created_at ?? null);
+    const messageId = message?.id?.toString();
 
-      console.log("Processando anexo (create)", {
-        url,
-        content_type: att?.content_type || null,
-        file_type: att?.file_type || null,
-      });
+    // Fetch and process attachments
+    const baseAttachments = (message?.attachments || []) as any[];
+    const contentUrlsRaw = TextUtils.extractUrlsFromContent(message?.content ?? rawContent, contentText);
+    const contentUrls = contentUrlsRaw.map((u) => TextUtils.normalizeUrl(u, integration.chatwoot_url));
 
-      if (isAudioAttachment(att)) {
-        let transcript: string | undefined = undefined;
-        try {
-          console.log("Invocando transcribe-audio (create)", {
-            url,
-            content_type: att?.content_type || att?.file_type || null,
-          });
-          const { data, error } = await supabase.functions.invoke("transcribe-audio", {
-            body: {
-              url,
-              content_type: att?.content_type || att?.file_type || null,
-              chatwoot_api_key: integrationCheck?.chatwoot_api_key || null,
-            },
-            headers: { Authorization: `Bearer ${supabaseKey}` },
-          });
-          if (!error && data?.transcript) transcript = data.transcript;
-        } catch (err) {
-          console.error("Transcrição falhou (create):", err);
-        }
-        attachmentEntries.push({ type: "audio", name, url, content_type: att?.content_type || null, transcript });
-      } else if (isImageAttachment(att)) {
-        attachmentEntries.push({ type: "image", name, url, content_type: att?.content_type || null });
-      } else if (isFileAttachment(att)) {
-        attachmentEntries.push({ type: "file", name, url, content_type: att?.content_type || null });
-      } else {
-        attachmentEntries.push({ type: "file", name, url, content_type: att?.content_type || att?.file_type || null });
-      }
-    }
+    const fetchedAttachments = await this.fetchAttachments(integration, conversation, message, baseAttachments);
+    
+    const allAttachments = [
+      ...(fetchedAttachments.length > 0 ? fetchedAttachments : baseAttachments),
+      ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
+    ] as Attachment[];
 
-    const initialEntry = {
-      id: messageId,
+    const processedAttachments = await AttachmentProcessor.processAttachments(
+      allAttachments,
+      this.supabase,
+      this.supabaseKey,
+      integration.chatwoot_api_key
+    );
+
+    // Create initial message
+    const initialMessage = MessageBuilder.createChatMessage(
+      messageId,
       timestamp,
-      sender_label: chatSender.label,
-      sender_role: chatSender.role,
-      sender_name: effectiveSender?.name || (chatSender.role === "agent" ? "Atendente" : "Cliente"),
-      content: contentText || "Nova conversa iniciada",
-      attachments: attachmentEntries,
-    };
+      chatSender.label,
+      chatSender.role,
+      effectiveSender?.name || (chatSender.role === "agent" ? "Atendente" : "Cliente"),
+      contentText || "Nova conversa iniciada",
+      processedAttachments
+    );
 
-    const initialLog = [initialEntry];
-    const description = renderDescriptionFromLog(initialLog);
-    const priority = computePriority(description);
+    const initialLog = [initialMessage];
+    const description = MessageBuilder.renderDescriptionFromLog(initialLog);
+    const priority = TextUtils.computePriority(description);
 
+    // Create card
     const cardData: any = {
       column_id: firstColumn.id,
       title: `${(effectiveSender?.name || "Cliente")} - ${conversation?.inbox?.name || "Nova conversa"}`,
@@ -741,7 +823,7 @@ serve(async (req) => {
     };
     if (conversation?.assignee?.name) cardData.chatwoot_agent_name = conversation.assignee.name;
 
-    const { data: card, error } = await supabase.from("cards").insert(cardData).select().single();
+    const { data: card, error } = await CardManager.createCard(this.supabase, cardData);
     if (error) {
       console.error("Erro criando card:", error);
       return new Response(JSON.stringify({ error: error.message }), {
@@ -751,16 +833,86 @@ serve(async (req) => {
     }
 
     if (card?.id) {
-      try { await triggerAIAnalysis(card.id); } catch {}
+      this.triggerAIAnalysis(card.id).catch(() => {});
     }
     return new Response(JSON.stringify({ message: "Card criado com sucesso", card }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error: any) {
-    console.error("Erro processando webhook:", error);
-    return new Response(JSON.stringify({ error: error?.message || "Erro desconhecido" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
   }
+
+  async handleRequest(req: Request): Promise<Response> {
+    try {
+      const rawWebhook = await req.json();
+      const webhook = ChatwootWebhookSchema.parse(rawWebhook);
+      const { event, conversation, account } = webhook;
+
+      // Early validation
+      if (this.shouldIgnoreMessage(webhook)) {
+        return new Response(JSON.stringify({ message: "Mensagem ignorada" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const accountId = account?.id || conversation?.id;
+      if (!accountId) {
+        return new Response(JSON.stringify({ error: "Sem account_id" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Validate integration
+      const integration = await this.validateIntegration(String(accountId));
+      if (!integration) {
+        return new Response(JSON.stringify({ message: "Sem integração para esta conta" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (!integration.active) {
+        return new Response(JSON.stringify({ message: "Integração pausada" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      if (this.shouldIgnoreConversation(integration, conversation)) {
+        return new Response(JSON.stringify({ message: "Conversa ignorada por filtro" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Check for existing card
+      let existingCard = null;
+      if (["message_created", "message_updated", "conversation_updated"].includes(event) && conversation?.id) {
+        existingCard = await CardManager.findExistingCard(this.supabase, conversation.id);
+      }
+
+      // Route to appropriate handler
+      if (existingCard) {
+        return await this.handleExistingCard(webhook, integration, existingCard);
+      } else {
+        return await this.handleNewCard(webhook, integration);
+      }
+
+    } catch (error: any) {
+      console.error("Erro processando webhook:", error);
+      return new Response(JSON.stringify({ error: error?.message || "Erro desconhecido" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+}
+
+// Main handler
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  
+  const handler = new WebhookHandler(supabaseUrl, supabaseKey);
+  return await handler.handleRequest(req);
 });
