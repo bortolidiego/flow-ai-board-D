@@ -261,18 +261,41 @@ export const useKanbanData = (workspaceId?: string) => {
   };
 
   const deleteCards = async (cardIds: string[]) => {
-    const { error } = await supabase.rpc('delete_cards_bulk', {
-      card_ids: cardIds
-    });
+    // Tenta usar a função RPC; se não existir, faz fallback para DELETE direto na tabela
+    const { error: rpcError } = await supabase.rpc('delete_cards_bulk', { card_ids: cardIds });
 
-    if (error) {
-      toast({
-        title: 'Erro ao excluir cards',
-        description: error.message,
-        variant: 'destructive',
-      });
-      return false;
+    if (rpcError) {
+      const shouldFallback =
+        (rpcError as any)?.status === 404 ||
+        /not found|404/i.test(rpcError.message || '') ||
+        /function.*delete_cards_bulk/i.test(rpcError.message || '');
+
+      if (shouldFallback) {
+        const { error: deleteError } = await supabase
+          .from('cards')
+          .delete()
+          .in('id', cardIds);
+
+        if (deleteError) {
+          toast({
+            title: 'Erro ao excluir cards',
+            description: deleteError.message,
+            variant: 'destructive',
+          });
+          return false;
+        }
+      } else {
+        toast({
+          title: 'Erro ao excluir cards',
+          description: rpcError.message,
+          variant: 'destructive',
+        });
+        return false;
+      }
     }
+
+    // Atualiza estado local para refletir exclusão imediata
+    setCards(prev => prev.filter(c => !cardIds.includes(c.id)));
 
     toast({
       title: 'Cards excluídos',
