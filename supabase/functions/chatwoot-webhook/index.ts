@@ -194,7 +194,7 @@ serve(async (req) => {
     const { data: integrationCheck, error: integrationError } = await supabase
       .from("chatwoot_integrations")
       .select("active, account_id, chatwoot_api_key, chatwoot_url, inbox_id, pipeline_id, pipelines(id, columns(id, name, position))")
-      .eq("account_id", account?.id?.toString() || "")
+      .eq("account_id", String(accountId))
       .maybeSingle();
 
     if (integrationError) {
@@ -469,7 +469,7 @@ serve(async (req) => {
 
     const cardData: any = {
       column_id: firstColumn.id,
-      title: `${sender?.name || "Cliente"} - ${conversation?.inbox?.name || "Nova conversa"}`,
+      title: `${(effectiveSender?.name || "Cliente")} - ${conversation?.inbox?.name || "Nova conversa"}`,
       description,
       priority,
       assignee: conversation?.assignee?.name,
