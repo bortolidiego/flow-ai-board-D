@@ -158,29 +158,6 @@ class TextUtils {
     }
   }
 
-  static extractUrlsFromContent(raw?: string | null, text?: string | null): string[] {
-    const urls = new Set<string>();
-    const pushMatches = (s?: string | null) => {
-      if (!s) return;
-      try {
-        const absoluteRegex = /https?:\/\/[^\s)"']+/g;
-        const absMatches = s.match(absoluteRegex) || [];
-        absMatches.forEach((u) => urls.add(u));
-
-        const attrRegex = /(href|src)\s*=\s*["']([^"']+)["']/gi;
-        let m: RegExpExecArray | null;
-        while ((m = attrRegex.exec(s)) !== null) {
-          const val = m[2];
-          if (val.startsWith("blob:")) continue;
-          urls.add(val);
-        }
-      } catch {}
-    };
-    pushMatches(raw);
-    pushMatches(text);
-    return Array.from(urls);
-  }
-
   static normalizeUrl(u: string, base?: string | null): string {
     if (!u) return u;
     try {
@@ -234,15 +211,15 @@ class ChatwootAPIClient {
           if (json === null) {
             console.error("Chatwoot retornou resposta não JSON para", strategy.label);
           } else {
-            console.log("Chatwoot OK via", strategy.label);
+            console.log("✅ Chatwoot OK via", strategy.label);
           }
           return { ok: true, status: res.status, json };
         } else {
           const text = await res.text().catch(() => "");
-          console.error("Chatwoot falhou", { url: strategy.endpoint, label: strategy.label, status: res.status, body: text?.slice(0, 500) });
+          console.error("❌ Chatwoot falhou", { url: strategy.endpoint, label: strategy.label, status: res.status, body: text?.slice(0, 500) });
         }
       } catch (e) {
-        console.error("Erro na tentativa de autenticação Chatwoot", { label: strategy.label, error: String(e) });
+        console.error("❌ Erro na tentativa de autenticação Chatwoot", { label: strategy.label, error: String(e) });
       }
     }
 
@@ -251,13 +228,15 @@ class ChatwootAPIClient {
 
   async getMessageAttachments(accountId: string, conversationId: number, messageId: number): Promise<Attachment[]> {
     const endpoint = `${this.baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages/${messageId}`;
-    console.log("Consultando Chatwoot para anexos da mensagem", { endpoint });
+    console.log("🔍 Consultando Chatwoot para anexos da mensagem", { endpoint, messageId });
     
     const result = await this.fetchJson(endpoint);
     if (!result.ok) return [];
 
     const msg = result.json;
     const rawAttachments = Array.isArray(msg?.attachments) ? msg.attachments : [];
+    
+    console.log("📎 Anexos brutos recebidos da API:", JSON.stringify(rawAttachments, null, 2));
     
     const normalized = rawAttachments.map((att: any): Attachment => {
       const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
@@ -270,17 +249,17 @@ class ChatwootAPIClient {
       };
     }).filter((a: Attachment) => !!a.url);
 
-    console.log("Anexos obtidos via Chatwoot API", { count: normalized.length });
+    console.log("✅ Anexos normalizados obtidos via Chatwoot API", { count: normalized.length, attachments: normalized });
     return normalized;
   }
 
   async getConversationMessageAttachments(accountId: string, conversationId: number): Promise<Attachment[]> {
     const endpoint = `${this.baseUrl}/api/v1/accounts/${accountId}/conversations/${conversationId}/messages`;
-    console.log("Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
+    console.log("🔍 Consultando Chatwoot mensagens da conversa para anexos", { endpoint });
     
     const result = await this.fetchJson(endpoint);
     if (!result.ok) {
-      console.error("Falha ao obter mensagens via Chatwoot API", { status: result.status });
+      console.error("❌ Falha ao obter mensagens via Chatwoot API", { status: result.status });
       return [];
     }
 
@@ -303,7 +282,7 @@ class ChatwootAPIClient {
       }).filter((a: Attachment) => !!a.url);
 
       if (normalized.length > 0) {
-        console.log("Anexos obtidos via histórico da conversa", { count: normalized.length });
+        console.log("✅ Anexos obtidos via histórico da conversa", { count: normalized.length });
         return normalized;
       }
     }
@@ -311,20 +290,26 @@ class ChatwootAPIClient {
   }
 }
 
-// Attachment Processor
+// Attachment Processor - APENAS ÁUDIOS
 class AttachmentProcessor {
-  private static readonly AUDIO_EXTENSIONS = [".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr", ".mp4", ".ts", ".3gp"];
-  private static readonly VIDEO_AUDIO_TYPES = ["video/vnd.dlna.mpeg-tts", "video/mp4", "video/3gpp", "video/webm", "video/ogg"];
+  // Extensões de áudio suportadas
+  private static readonly AUDIO_EXTENSIONS = [
+    ".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr", ".opus"
+  ];
 
   private static attachmentUrl(att: Attachment): string | undefined {
-    return att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
+    return att?.url || att?.data_url || att?.download_url || att?.file_url || undefined;
   }
 
   private static isAudioUrlByExtension(url?: string | null): boolean {
     if (!url) return false;
     try {
       const lower = url.toLowerCase();
-      return this.AUDIO_EXTENSIONS.some((ext) => lower.includes(ext));
+      const hasAudioExtension = this.AUDIO_EXTENSIONS.some((ext) => lower.includes(ext));
+      if (hasAudioExtension) {
+        console.log("✅ URL detectada como áudio por extensão:", url);
+      }
+      return hasAudioExtension;
     } catch {
       return false;
     }
@@ -332,10 +317,14 @@ class AttachmentProcessor {
 
   private static isAudioAttachment(att: Attachment): boolean {
     const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-    if (!!ct) {
-      if (ct === "audio" || ct.startsWith("audio/")) return true;
-      if (ct.startsWith("video/") && this.VIDEO_AUDIO_TYPES.includes(ct)) return true;
+    
+    // Verifica content_type
+    if (!!ct && (ct === "audio" || ct.startsWith("audio/"))) {
+      console.log("✅ Anexo detectado como áudio por content_type:", ct);
+      return true;
     }
+    
+    // Verifica extensão da URL
     const url = this.attachmentUrl(att);
     return this.isAudioUrlByExtension(url);
   }
@@ -343,13 +332,6 @@ class AttachmentProcessor {
   private static isImageAttachment(att: Attachment): boolean {
     const ct = (att?.content_type || att?.file_type || "").toLowerCase();
     return !!ct && (ct === "image" || ct.startsWith("image/"));
-  }
-
-  private static isFileAttachment(att: Attachment): boolean {
-    const ct = (att?.content_type || att?.file_type || "").toLowerCase();
-    const isAudio = !!ct && (ct === "audio" || ct.startsWith("audio/"));
-    const isImage = !!ct && (ct === "image" || ct.startsWith("image/"));
-    return !!ct && !(isAudio || isImage);
   }
 
   static async processAttachments(
@@ -360,19 +342,31 @@ class AttachmentProcessor {
   ): Promise<ProcessedAttachment[]> {
     const processed: ProcessedAttachment[] = [];
 
+    console.log("🔄 Processando anexos:", { total: attachments.length });
+
     for (const att of attachments) {
       let url = this.attachmentUrl(att);
-      if (!url) continue;
+      if (!url) {
+        console.log("⚠️ Anexo sem URL, ignorando:", att);
+        continue;
+      }
 
       const name = url.split("/").pop() || `anexo-${att?.id || ""}`;
       const contentType = att?.content_type || att?.file_type || null;
 
-      console.log("Processando anexo", { url, content_type: contentType, file_type: att?.file_type });
+      console.log("📎 Processando anexo:", { 
+        url, 
+        content_type: contentType, 
+        file_type: att?.file_type,
+        isAudio: this.isAudioAttachment(att),
+        isImage: this.isImageAttachment(att)
+      });
 
       if (this.isAudioAttachment(att)) {
+        console.log("🎵 ÁUDIO DETECTADO! Iniciando transcrição...");
         let transcript: string | undefined = undefined;
         try {
-          console.log("Invocando transcribe-audio", { url, content_type: contentType });
+          console.log("📞 Invocando transcribe-audio", { url, content_type: contentType });
           const { data, error } = await supabase.functions.invoke("transcribe-audio", {
             body: {
               url,
@@ -381,17 +375,34 @@ class AttachmentProcessor {
             },
             headers: { Authorization: `Bearer ${supabaseKey}` },
           });
-          if (!error && data?.transcript) transcript = data.transcript;
+          
+          if (error) {
+            console.error("❌ Erro na transcrição:", error);
+          } else if (data?.transcript) {
+            transcript = data.transcript;
+            console.log("✅ Transcrição concluída:", transcript.substring(0, 100) + "...");
+          } else {
+            console.log("⚠️ Transcrição retornou vazia");
+          }
         } catch (err) {
-          console.error("Transcrição falhou:", err);
+          console.error("❌ Transcrição falhou:", err);
         }
         processed.push({ type: "audio", name, url, content_type: contentType, transcript });
       } else if (this.isImageAttachment(att)) {
+        console.log("🖼️ Imagem detectada");
         processed.push({ type: "image", name, url, content_type: contentType });
       } else {
+        console.log("📄 Arquivo genérico detectado");
         processed.push({ type: "file", name, url, content_type: contentType });
       }
     }
+
+    console.log("✅ Processamento de anexos concluído:", { 
+      total: processed.length,
+      audios: processed.filter(p => p.type === "audio").length,
+      images: processed.filter(p => p.type === "image").length,
+      files: processed.filter(p => p.type === "file").length
+    });
 
     return processed;
   }
@@ -562,42 +573,62 @@ class WebhookHandler {
     message: any,
     baseAttachments: any[]
   ): Promise<Attachment[]> {
+    console.log("🔍 Iniciando busca de anexos...");
+    console.log("📎 Anexos base recebidos:", JSON.stringify(baseAttachments, null, 2));
+    
     const chatwootClient = new ChatwootAPIClient(integration.chatwoot_api_key, integration.chatwoot_url);
     let attachments: Attachment[] = [];
 
-    // Try to fetch from message if attachments are missing URLs
-    if (
-      (baseAttachments.length === 0 || baseAttachments.some((a: any) => !AttachmentProcessor['attachmentUrl'](a))) &&
-      conversation?.id && message?.id
-    ) {
+    // Sempre tenta buscar da API se temos conversationId e messageId
+    if (conversation?.id && message?.id) {
       try {
+        console.log("🔄 Buscando anexos via API do Chatwoot...");
         attachments = await chatwootClient.getMessageAttachments(
           String(integration.account_id),
           conversation.id,
           message.id
         );
+        
+        if (attachments.length > 0) {
+          console.log("✅ Anexos encontrados via API:", attachments.length);
+          return attachments;
+        }
       } catch (e) {
-        console.error("Falha ao buscar anexos da mensagem:", e);
+        console.error("❌ Falha ao buscar anexos da mensagem:", e);
       }
     }
 
-    // Fallback to conversation history if still no attachments
-    const baseHasUrls = baseAttachments.some((a: any) => AttachmentProcessor['attachmentUrl'](a));
-    if (
-      !baseHasUrls &&
-      attachments.length === 0 &&
-      conversation?.id
-    ) {
+    // Fallback: busca no histórico da conversa
+    if (attachments.length === 0 && conversation?.id) {
       try {
+        console.log("🔄 Fallback: buscando anexos no histórico da conversa...");
         attachments = await chatwootClient.getConversationMessageAttachments(
           String(integration.account_id),
           conversation.id
         );
+        
+        if (attachments.length > 0) {
+          console.log("✅ Anexos encontrados via histórico:", attachments.length);
+          return attachments;
+        }
       } catch (e) {
-        console.error("Falha ao buscar anexos do histórico:", e);
+        console.error("❌ Falha ao buscar anexos do histórico:", e);
       }
     }
 
+    // Se ainda não encontrou, usa os anexos base
+    if (attachments.length === 0 && baseAttachments.length > 0) {
+      console.log("⚠️ Usando anexos base do webhook");
+      attachments = baseAttachments.map((att: any) => ({
+        id: att?.id,
+        url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
+        content_type: att?.content_type || null,
+        file_type: att?.file_type || null,
+        filename: att?.filename || null,
+      })).filter((a: Attachment) => !!a.url);
+    }
+
+    console.log("📊 Total de anexos encontrados:", attachments.length);
     return attachments;
   }
 
@@ -646,26 +677,17 @@ class WebhookHandler {
 
     // Fetch attachments
     const baseAttachments = (message?.attachments || []) as any[];
-    const contentUrlsRaw = TextUtils.extractUrlsFromContent(message?.content ?? rawContent, contentText);
-    const contentUrls = contentUrlsRaw.map((u) => TextUtils.normalizeUrl(u, integration.chatwoot_url));
-
     const fetchedAttachments = await this.fetchAttachments(integration, conversation, message, baseAttachments);
-    
-    const allAttachments = [
-      ...(fetchedAttachments.length > 0 ? fetchedAttachments : baseAttachments),
-      ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
-    ] as Attachment[];
 
-    console.log("Anexos detectados para processamento", {
+    console.log("📊 Anexos para processamento:", {
       baseCount: baseAttachments.length,
       fetchedCount: fetchedAttachments.length,
-      contentUrlCount: contentUrls.length,
-      total: allAttachments.length,
+      total: fetchedAttachments.length,
     });
 
     // Process attachments
     const processedAttachments = await AttachmentProcessor.processAttachments(
-      allAttachments,
+      fetchedAttachments,
       this.supabase,
       this.supabaseKey,
       integration.chatwoot_api_key
@@ -770,18 +792,10 @@ class WebhookHandler {
 
     // Fetch and process attachments
     const baseAttachments = (message?.attachments || []) as any[];
-    const contentUrlsRaw = TextUtils.extractUrlsFromContent(message?.content ?? rawContent, contentText);
-    const contentUrls = contentUrlsRaw.map((u) => TextUtils.normalizeUrl(u, integration.chatwoot_url));
-
     const fetchedAttachments = await this.fetchAttachments(integration, conversation, message, baseAttachments);
-    
-    const allAttachments = [
-      ...(fetchedAttachments.length > 0 ? fetchedAttachments : baseAttachments),
-      ...contentUrls.map((u) => ({ url: u, content_type: null, file_type: null })),
-    ] as Attachment[];
 
     const processedAttachments = await AttachmentProcessor.processAttachments(
-      allAttachments,
+      fetchedAttachments,
       this.supabase,
       this.supabaseKey,
       integration.chatwoot_api_key
@@ -843,6 +857,8 @@ class WebhookHandler {
   async handleRequest(req: Request): Promise<Response> {
     try {
       const rawWebhook = await req.json();
+      console.log("📨 Webhook recebido:", JSON.stringify(rawWebhook, null, 2));
+      
       const webhook = ChatwootWebhookSchema.parse(rawWebhook);
       const { event, conversation, account } = webhook;
 
@@ -895,7 +911,7 @@ class WebhookHandler {
       }
 
     } catch (error: any) {
-      console.error("Erro processando webhook:", error);
+      console.error("❌ Erro processando webhook:", error);
       return new Response(JSON.stringify({ error: error?.message || "Erro desconhecido" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
