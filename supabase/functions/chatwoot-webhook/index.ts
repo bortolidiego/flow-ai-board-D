@@ -294,7 +294,7 @@ class ChatwootAPIClient {
 class AttachmentProcessor {
   // Extensões de áudio suportadas
   private static readonly AUDIO_EXTENSIONS = [
-    ".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr", ".opus"
+    ".mp3", ".ogg", ".wav", ".m4a", ".aac", ".flac", ".webm", ".amr", ".opus", ".oga", ".ts"
   ];
 
   private static attachmentUrl(att: Attachment): string | undefined {
@@ -321,6 +321,11 @@ class AttachmentProcessor {
     // Verifica content_type
     if (!!ct && (ct === "audio" || ct.startsWith("audio/"))) {
       console.log("✅ Anexo detectado como áudio por content_type:", ct);
+      return true;
+    }
+    // Alguns áudios .ts chegam como vídeo (WhatsApp/Chatwoot)
+    if (ct === "video/vnd.dlna.mpeg-tts" || ct === "video/mp2t") {
+      console.log("✅ Tratando content_type de vídeo TS como áudio:", ct);
       return true;
     }
     
@@ -385,15 +390,10 @@ class AttachmentProcessor {
             console.log("⚠️ Transcrição retornou vazia");
           }
         } catch (err) {
-          console.error("❌ Transcrição falhou:", err);
+        console.error("❌ Transcrição falhou:", err);
         }
+        // Apenas áudio é retornado; não processar imagens/arquivos
         processed.push({ type: "audio", name, url, content_type: contentType, transcript });
-      } else if (this.isImageAttachment(att)) {
-        console.log("🖼️ Imagem detectada");
-        processed.push({ type: "image", name, url, content_type: contentType });
-      } else {
-        console.log("📄 Arquivo genérico detectado");
-        processed.push({ type: "file", name, url, content_type: contentType });
       }
     }
 
@@ -619,13 +619,16 @@ class WebhookHandler {
     // Se ainda não encontrou, usa os anexos base
     if (attachments.length === 0 && baseAttachments.length > 0) {
       console.log("⚠️ Usando anexos base do webhook");
-      attachments = baseAttachments.map((att: any) => ({
-        id: att?.id,
-        url: att?.data_url || att?.download_url || att?.url || att?.file_url || undefined,
-        content_type: att?.content_type || null,
-        file_type: att?.file_type || null,
-        filename: att?.filename || null,
-      })).filter((a: Attachment) => !!a.url);
+      attachments = baseAttachments.map((att: any) => {
+        const rawUrl = att?.data_url || att?.download_url || att?.url || att?.file_url || undefined;
+        return {
+          id: att?.id,
+          url: rawUrl ? TextUtils.normalizeUrl(rawUrl, integration.chatwoot_url) : undefined,
+          content_type: att?.content_type || null,
+          file_type: att?.file_type || null,
+          filename: att?.filename || null,
+        };
+      }).filter((a: Attachment) => !!a.url);
     }
 
     console.log("📊 Total de anexos encontrados:", attachments.length);
