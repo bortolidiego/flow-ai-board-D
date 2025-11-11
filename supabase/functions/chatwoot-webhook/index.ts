@@ -244,7 +244,7 @@ serve(async (req) => {
           });
         }
 
-        const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
         const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
         const isContact = effectiveSender?.type === "Contact" || derivedMessageType === "incoming";
         console.log("Message details:", { sender_type: effectiveSender?.type, message_type: derivedMessageType, isAgent, isContact, sender_name: effectiveSender?.name });
@@ -393,7 +393,7 @@ serve(async (req) => {
     if (contentLower.includes("urgente") || contentLower.includes("emergência")) priority = "high";
     else if (contentLower.includes("dúvida") || contentLower.includes("informação")) priority = "low";
 
-    const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
     const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
     const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
     const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
