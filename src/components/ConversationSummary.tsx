@@ -24,7 +24,7 @@ type ParsedLine = {
  * Tenta identificar timestamp [HH:MM]
  */
 function extractTime(line: string) {
-  const m = line.match(/\[(\d{2}:\d{2})\]/);
+  const m = line.match(/^\s*\[(\d{2}:\d{2})\]/);
   return m ? m[1] : undefined;
 }
 
