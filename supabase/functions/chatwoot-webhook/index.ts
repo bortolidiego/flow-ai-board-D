@@ -38,7 +38,7 @@ const ChatwootWebhookSchema = z.object({
         email: z.string().email().max(255).optional().nullable(),
       }).optional(),
     }).optional(),
-    created_at: z.string().optional().nullable(),
+    created_at: z.union([z.string(), z.number()]).optional().nullable(),
   }).optional(),
   message_type: z.enum(["incoming", "outgoing"]).optional(),
   content: z.string().max(50000).optional(),
@@ -61,7 +61,7 @@ const ChatwootWebhookSchema = z.object({
       name: z.string().max(200).optional(),
       email: z.string().email().max(255).optional().nullable(),
     }).optional().nullable(),
-    created_at: z.string().optional().nullable(),
+    created_at: z.union([z.string(), z.number()]).optional().nullable(),
     attachments: z.array(AttachmentSchema).optional().nullable(),
   }).optional(),
 });
@@ -86,9 +86,31 @@ function htmlToText(input: string | undefined): string {
   return s;
 }
 
-function formatTimestamp(ts?: string | null) {
+function normalizeTimestamp(ts?: string | number | null): string {
   try {
-    const d = ts ? new Date(ts) : new Date();
+    if (typeof ts === "number") {
+      const ms = ts < 1e12 ? ts * 1000 : ts;
+      return new Date(ms).toISOString();
+    }
+    if (typeof ts === "string" && ts) {
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    }
+    return new Date().toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
+function formatTimestamp(ts?: string | number | null) {
+  try {
+    let d: Date;
+    if (typeof ts === "number") {
+      const ms = ts < 1e12 ? ts * 1000 : ts;
+      d = new Date(ms);
+    } else {
+      d = ts ? new Date(ts) : new Date();
+    }
     return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
   } catch {
     const d = new Date();
@@ -286,7 +308,7 @@ serve(async (req) => {
     const derivedMessageType = message?.message_type || message_type;
     const contentText = htmlToText(message?.content ?? rawContent);
     const chatSender = buildSender(effectiveSender?.type, derivedMessageType);
-    const timestamp = message?.created_at || conversation?.created_at || new Date().toISOString();
+    const timestamp = normalizeTimestamp(message?.created_at ?? conversation?.created_at ?? null);
     const messageId = message?.id?.toString();
     const attachments = (message?.attachments || []) as any[];
 
@@ -357,8 +379,8 @@ serve(async (req) => {
 
       // Ordena por timestamp
       newLog.sort((a, b) => {
-        const ta = new Date(a.timestamp || new Date()).getTime();
-        const tb = new Date(b.timestamp || new Date()).getTime();
+        const ta = new Date(a.timestamp).getTime();
+        const tb = new Date(b.timestamp).getTime();
         return ta - tb;
       });
 
