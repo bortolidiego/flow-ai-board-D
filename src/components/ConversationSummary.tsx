@@ -46,6 +46,39 @@ function normalizeName(raw?: string) {
 }
 
 /**
+ * Escapa nome para uso em regex
+ */
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Remove o prefixo redundante 'Nome:' (com ou sem emojis/itálico)
+ * do início do conteúdo da mensagem, mantendo apenas uma ocorrência do nome.
+ */
+function dedupeMessage(name?: string, message?: string) {
+  if (!message) return '';
+  const msg = message.trim();
+  const cleanName = normalizeName(name);
+  if (!cleanName) return msg;
+
+  // Padrão abrangente: emojis/labels, itálico/ênfase, espaços e dois-pontos
+  const n = escapeRegExp(cleanName);
+  const pattern = new RegExp(
+    String.raw`^\s*(?:[\*\_\~"]*)\s*(?:🧑‍💼|👤|Atendente|Cliente)?\s*${n}\s*(?:[\*\_\~"]*)\s*:\s*(?:[\*\_\~"]*)\s*`,
+    'i'
+  );
+
+  let out = msg.replace(pattern, '').trim();
+
+  // Se ainda sobra apenas marcação sem conteúdo útil, limpar
+  out = out.replace(/^[\*\_\~"\s]+$/, '').trim();
+
+  // Evitar bolha vazia se a mensagem ficar sem conteúdo após a poda
+  return out;
+}
+
+/**
  * Detecta se a linha é claramente de sistema (eventos)
  */
 function isSystemEvent(line: string) {
@@ -148,7 +181,7 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
             parsed.name ||
             lastName;
 
-          const message = (nextParsed.message || '').trim();
+          let message = dedupeMessage(effectiveName, (nextParsed.message || '').trim());
           if (message.length > 0) {
             bubbles.push({
               role: effectiveRole,
@@ -185,7 +218,7 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
       const effectiveName =
         normalizeName(parsed.name) || lastName;
 
-      const message = (parsed.message || '').trim();
+      let message = dedupeMessage(effectiveName, (parsed.message || '').trim());
       if (message.length > 0) {
         bubbles.push({
           role: effectiveRole,
