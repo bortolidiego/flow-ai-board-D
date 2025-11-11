@@ -18,13 +18,17 @@ type TranscribeRequest = {
 // Normaliza content-type para Whisper
 function normalizeContentType(ct?: string | null): string {
   const val = (ct || "").toLowerCase().trim();
+  console.log("🔧 Normalizando content-type:", { original: ct, normalized: val });
+  
   if (!val) return "audio/mpeg";
   if (val.startsWith("audio/") || val === "audio") return ct!;
   // Muitos áudios do WhatsApp/Chatwoot chegam como TS de vídeo
   if (val === "video/vnd.dlna.mpeg-tts" || val === "video/mp2t" || val === "video/mpeg" || val === "application/octet-stream") {
+    console.log("✅ Convertendo content-type TS para audio/mpeg:", val);
     return "audio/mpeg";
   }
   // fallback seguro
+  console.log("⚠️ Usando fallback audio/mpeg para content-type desconhecido:", val);
   return "audio/mpeg";
 }
 
