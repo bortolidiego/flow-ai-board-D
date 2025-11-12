@@ -1,426 +1,182 @@
-import { useState, useEffect } from 'react';
-import {
-  DndContext,
-  DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { KanbanColumn } from '@/components/KanbanColumn';
+"use client";
+
+import React, { useState } from "react";
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
+import { Column } from "@/components/Column";
 import { KanbanCard } from '@/components/KanbanCard';
-import { CardDetailDialog } from '@/components/CardDetailDialog';
+import CardDetailDialog from '@/components/CardDetailDialog'; // Fixed import
 import { CardCompletionDialog } from '@/components/CardCompletionDialog';
-import { BulkActionsBar } from '@/components/BulkActionsBar';
-import { KanbanFilters } from '@/components/KanbanFilters';
 import { useKanbanData } from '@/hooks/useKanbanData';
-import { useKanbanFilters } from '@/hooks/useKanbanFilters';
-import { useWorkspace } from '@/hooks/useWorkspace';
-import { Loader2, RefreshCw, CheckSquare, X, Building2 } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { cn } from '@/lib/utils';
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "react-hot-toast";
+import { Plus, BarChart3 } from "lucide-react";
 
-const KanbanBoard = () => {
-  const { workspace, loading: workspaceLoading } = useWorkspace();
-  const {
-    pipeline,
-    cards,
-    pipelineConfig,
-    loading,
-    updateCardColumn,
-    deleteCards,
-    bulkUpdateCardColumn,
-    refreshCards,
-  } = useKanbanData(workspace?.id);
+interface DragEndResult {
+  destination: {
+    droppableId: string;
+    index: number;
+  } | null;
+  source: {
+    droppableId: string;
+    index: number;
+  };
+  draggableId: string;
+}
 
-  const {
-    filters,
-    sortBy,
-    setSortBy,
-    updateFilter,
-    resetFilters,
-    filteredCards,
-    activeFiltersCount,
-    savedViews,
-    saveView,
-    loadView,
-    deleteView,
-  } = useKanbanFilters(cards);
+export default function KanbanBoard() {
+  const { 
+    columns, 
+    cards, 
+    isLoading, 
+    error,
+    refetch 
+  } = useKanbanData();
 
-  const [activeCard, setActiveCard] = useState<any>(null);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [completionDialogOpen, setCompletionDialogOpen] = useState(false);
-  const [cardToComplete, setCardToComplete] = useState<string | null>(null);
-  const [reanalyzing, setReanalyzing] = useState(false);
-  const [reanalysisProgress, setReanalysisProgress] = useState<{ current: number; total: number } | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
-  const { toast } = useToast();
-  const isMobile = useIsMobile();
+  const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
+  const [completionCard, setCompletionCard] = useState<KanbanCard | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const handleReanalyzeAll = async () => {
-    if (!pipeline) {
-      toast({
-        title: "Nenhum pipeline disponível",
-        description: "Aguarde o carregamento do pipeline.",
-        variant: "destructive"
-      });
+  const handleDragEnd = async (result: DragEndResult) => {
+    if (!result.destination) return;
+
+    const { source, destination, draggableId } = result;
+
+    // Se moveu para o mesmo lugar, não faz nada
+    if (
+      source.droppableId === destination.droppableId &&
+      source.index === destination.index
+    ) {
       return;
     }
-
-    setReanalyzing(true);
-    setReanalysisProgress({ current: 0, total: cards.length });
-    
-    toast({
-      title: "Reanálise iniciada",
-      description: "Processando todos os cards. Isso pode levar alguns minutos...",
-    });
-
-    const estimatedTimePerCard = 2500;
-    const interval = setInterval(() => {
-      setReanalysisProgress(prev => {
-        if (!prev) return null;
-        const newCurrent = Math.min(prev.current + 1, prev.total);
-        if (newCurrent >= prev.total) {
-          clearInterval(interval);
-        }
-        return { current: newCurrent, total: prev.total };
-      });
-    }, estimatedTimePerCard);
 
     try {
-      const { data, error } = await supabase.functions.invoke('reanalyze-all-cards', {
-        body: { pipelineId: pipeline.id }
-      });
+      // Encontrar o card sendo movido
+      const card = cards.find(c => c.id === draggableId);
+      if (!card) return;
 
-      clearInterval(interval);
+      // Atualizar o card no banco
+      const { error } = await supabase
+        .from("cards")
+        .update({
+          column_id: destination.droppableId,
+          position: destination.index,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", draggableId);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Erro ao mover card:", error);
+        toast.error("Erro ao mover card");
+        return;
+      }
 
-      setReanalysisProgress({ current: data.total, total: data.total });
-      
-      toast({
-        title: "Reanálise concluída!",
-        description: `${data.successful} cards analisados com sucesso de ${data.total} total.`,
-      });
-
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
+      toast.success("Card movido com sucesso!");
+      refetch(); // Atualizar dados
     } catch (error) {
-      clearInterval(interval);
-      console.error('Error reanalyzing cards:', error);
-      toast({
-        title: "Erro na reanálise",
-        description: "Ocorreu um erro ao reanalisar os cards. Tente novamente.",
-        variant: "destructive"
-      });
-      setReanalysisProgress(null);
-    } finally {
-      setReanalyzing(false);
+      console.error("Erro ao processar movimento:", error);
+      toast.error("Erro ao processar movimento");
     }
   };
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
-
-  const toggleSelectionMode = () => {
-    setSelectionMode(!selectionMode);
-    if (selectionMode) {
-      setSelectedCardIds(new Set());
-    }
+  const handleCardClick = (card: KanbanCard) => {
+    setSelectedCard(card);
+    setIsDialogOpen(true);
   };
 
-  const toggleCardSelection = (cardId: string) => {
-    setSelectedCardIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(cardId)) {
-        newSet.delete(cardId);
-      } else {
-        newSet.add(cardId);
-      }
-      return newSet;
-    });
+  const handleCloseDialog = () => {
+    setSelectedCard(null);
+    setIsDialogOpen(false);
+    refetch(); // Atualizar dados ao fechar
   };
 
-  const selectAllCards = () => {
-    setSelectedCardIds(new Set(cards.map(c => c.id)));
+  const handleCompletion = (card: KanbanCard) => {
+    setCompletionCard(card);
   };
 
-  const selectColumnCards = (columnId: string) => {
-    const columnCards = cards.filter(c => c.columnId === columnId);
-    setSelectedCardIds(prev => {
-      const newSet = new Set(prev);
-      const allSelected = columnCards.every(card => newSet.has(card.id));
-      
-      if (allSelected) {
-        columnCards.forEach(card => newSet.delete(card.id));
-      } else {
-        columnCards.forEach(card => newSet.add(card.id));
-      }
-      
-      return newSet;
-    });
+  const handleCloseCompletionDialog = () => {
+    setCompletionCard(null);
+    refetch(); // Atualizar dados ao fechar
   };
 
-  const handleBulkDelete = async () => {
-    const success = await deleteCards(Array.from(selectedCardIds));
-    if (success) {
-      setSelectedCardIds(new Set());
-      setSelectionMode(false);
-      refreshCards();
-    }
-  };
-
-  const handleBulkTransfer = async (columnId: string) => {
-    const success = await bulkUpdateCardColumn(Array.from(selectedCardIds), columnId);
-    if (success) {
-      setSelectedCardIds(new Set());
-      setSelectionMode(false);
-      refreshCards();
-    }
-  };
-
-  const handleDragStart = (event: DragStartEvent) => {
-    if (selectionMode) return;
-    const { active } = event;
-    const card = cards.find((c) => c.id === active.id);
-    setActiveCard(card || null);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveCard(null);
-
-    if (!over) return;
-
-    const activeCardData = cards.find((c) => c.id === active.id);
-    if (!activeCardData) return;
-
-    const overColumnId = over.id as string;
-    
-    const targetColumn = pipeline?.columns.find(col => col.id === overColumnId);
-    if (targetColumn?.name === 'Finalizados') {
-      setCardToComplete(active.id as string);
-      setCompletionDialogOpen(true);
-      return;
-    }
-    
-    if (activeCardData.columnId !== overColumnId) {
-      await updateCardColumn(active.id as string, overColumnId);
-    }
-  };
-
-  const getColumnCards = (columnId: string) => {
-    return filteredCards.filter((card) => card.columnId === columnId);
-  };
-
-  if (workspaceLoading || loading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">Erro ao carregar dados: {error}</p>
+          <button 
+            onClick={refetch}
+            className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
+          >
+            Tentar novamente
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl">
-        <div className={cn("container mx-auto py-4", isMobile ? "px-3" : "px-6")}>
-          <div className={cn("gap-3", isMobile ? "flex flex-col" : "flex items-center justify-between")}>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className={cn("font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent", isMobile ? "text-xl" : "text-2xl")}>
-                  Kanban Board
-                </h1>
-                {workspace && (
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <Building2 className="w-3 h-3" />
-                    {workspace.name}
-                  </Badge>
-                )}
-              </div>
-              <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-xs")}>Gestão visual de leads e oportunidades</p>
-            </div>
-            <div className={cn("flex items-center", isMobile ? "flex-col gap-2 w-full" : "gap-2")}>
-              {!selectionMode ? (
-                <>
-                  <Button
-                    onClick={toggleSelectionMode}
-                    variant="outline"
-                    size={isMobile ? "default" : "sm"}
-                    className={cn("gap-2", isMobile && "w-full")}
-                  >
-                    <CheckSquare className={cn(isMobile ? "w-5 h-5" : "w-4 h-4")} />
-                    {isMobile ? "Seleção" : "Modo Seleção"}
-                  </Button>
-                  <Button
-                    onClick={handleReanalyzeAll}
-                    disabled={reanalyzing || !pipeline || cards.length === 0}
-                    variant="outline"
-                    size={isMobile ? "default" : "sm"}
-                    className={cn("gap-2", isMobile && "w-full")}
-                  >
-                    <RefreshCw className={cn(isMobile ? "w-5 h-5" : "w-4 h-4", reanalyzing && 'animate-spin')} />
-                    {reanalyzing ? (isMobile ? 'Reanalisando...' : 'Reanalisando...') : 'Reanalisar'}
-                  </Button>
-                  {reanalysisProgress && !isMobile && (
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span className="font-medium">
-                        {reanalysisProgress.current}/{reanalysisProgress.total}
-                      </span>
-                      <span className="text-xs">
-                        ({Math.round((reanalysisProgress.current / reanalysisProgress.total) * 100)}%)
-                      </span>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className={cn(
-                  "flex items-center rounded-lg bg-muted/30 border",
-                  isMobile ? "flex-col gap-2 w-full p-3" : "gap-2 p-2"
-                )}>
-                  <div className={cn("flex items-center", isMobile ? "justify-between w-full" : "gap-2")}>
-                    <Badge variant="secondary" className={cn("px-3", isMobile && "py-1.5 text-sm")}>
-                      {selectedCardIds.size} selecionado(s)
-                    </Badge>
-                    {!isMobile && (
-                      <>
-                        <Button
-                          onClick={selectAllCards}
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                        >
-                          Todos
-                        </Button>
-                        <Separator orientation="vertical" className="h-6" />
-                      </>
-                    )}
-                    <Button
-                      onClick={toggleSelectionMode}
-                      variant="ghost"
-                      size="sm"
-                      className={cn(isMobile ? "h-8" : "h-7")}
-                    >
-                      <X className={cn(isMobile ? "w-5 h-5" : "w-4 h-4")} />
-                    </Button>
-                  </div>
-                  {isMobile && (
-                    <Button
-                      onClick={selectAllCards}
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                    >
-                      <CheckSquare className="w-4 h-4 mr-2" />
-                      Selecionar Todos
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between p-4 border-b">
+        <h1 className="text-2xl font-bold">Kanban</h1>
+        <div className="flex items-center gap-2">
+          <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Novo Card
+          </button>
+          <button className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/90 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Relatórios
+          </button>
         </div>
       </div>
 
-      <main className={cn("container mx-auto py-8", isMobile ? "px-3" : "px-6")}>
-        <KanbanFilters
-          filters={filters}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          updateFilter={updateFilter}
-          resetFilters={resetFilters}
-          activeFiltersCount={activeFiltersCount}
-          totalCards={cards.length}
-          filteredCount={filteredCards.length}
-          cards={cards}
-          savedViews={savedViews}
-          saveView={saveView}
-          loadView={loadView}
-          deleteView={deleteView}
-        />
-
-        {selectionMode && selectedCardIds.size > 0 && (
-          <div className="mb-4">
-            <BulkActionsBar
-              selectedCount={selectedCardIds.size}
-              onCancel={() => {
-                setSelectedCardIds(new Set());
-                setSelectionMode(false);
-              }}
-              onDelete={handleBulkDelete}
-              onTransfer={handleBulkTransfer}
-              columns={pipeline?.columns || []}
-            />
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="flex gap-4 p-4 h-full">
+            {columns.map((column) => (
+              <Droppable key={column.id} droppableId={column.id}>
+                {(provided, snapshot) => (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className="flex-shrink-0 w-80"
+                  >
+                    <Column
+                      column={column}
+                      cards={cards.filter((card) => card.column_id === column.id)}
+                      onCardClick={handleCardClick}
+                      onCardCompletion={handleCompletion}
+                      isDraggingOver={snapshot.isDraggingOver}
+                    />
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            ))}
           </div>
-        )}
+        </div>
+      </DragDropContext>
 
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className={cn(
-            "pb-4",
-            isMobile
-              ? "flex flex-col gap-4 space-y-4"
-              : "flex gap-4 overflow-x-auto pb-4 min-h-[600px]"
-          )}>
-            {pipeline?.columns.map((column) => {
-              const columnCards = getColumnCards(column.id);
-              return (
-                <KanbanColumn
-                  key={column.id}
-                  id={column.id}
-                  title={column.name}
-                  cards={columnCards}
-                  count={columnCards.length}
-                  onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
-                  pipelineConfig={pipelineConfig}
-                  selectionMode={selectionMode}
-                  selectedCardIds={selectedCardIds}
-                  onSelectCard={toggleCardSelection}
-                  onSelectAllColumn={selectColumnCards}
-                />
-              );
-            })}
-          </div>
+      <CardDetailDialog 
+        card={selectedCard} 
+        onCardUpdate={handleCloseDialog}
+      />
 
-          <DragOverlay>
-            {activeCard && !selectionMode ? <KanbanCard {...activeCard} /> : null}
-          </DragOverlay>
-        </DndContext>
-
-        <CardDetailDialog
-          cardId={selectedCardId}
-          open={selectedCardId !== null}
-          onOpenChange={(open) => !open && setSelectedCardId(null)}
-          pipelineConfig={pipelineConfig}
-        />
-
-        {completionDialogOpen && cardToComplete && pipeline && (
-          <CardCompletionDialog
-            cardId={cardToComplete}
-            pipelineId={pipeline.id}
-            open={completionDialogOpen}
-            onOpenChange={setCompletionDialogOpen}
-            onCompleted={() => {
-              refreshCards();
-              setCardToComplete(null);
-            }}
-          />
-        )}
-      </main>
+      <CardCompletionDialog 
+        card={completionCard} 
+        onCardUpdate={handleCloseCompletionDialog}
+      />
     </div>
   );
-};
-
-export default KanbanBoard;
+}

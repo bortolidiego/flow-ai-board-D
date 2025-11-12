@@ -16,7 +16,32 @@ import ConversationSummary from "./ConversationSummary";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "react-hot-toast";
 
-// ... other imports and interfaces remain the same
+interface KanbanCard {
+  id: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  assignee?: string;
+  column_id: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  funnel_score?: number;
+  service_quality_score?: number;
+  lifecycle_progress_percent?: number;
+  value?: number;
+  conversation_status?: string;
+  subject?: string;
+  product_item?: string;
+  chatwoot_contact_name?: string;
+  chatwoot_contact_email?: string;
+  chatwoot_agent_name?: string;
+}
+
+interface CardDetailDialogProps {
+  card: KanbanCard | null;
+  onCardUpdate?: (card: KanbanCard | null) => void;
+}
 
 export default function CardDetailDialog({ card, onCardUpdate }: CardDetailDialogProps) {
   const [isEditing, setIsEditing] = useState(false);
@@ -26,18 +51,56 @@ export default function CardDetailDialog({ card, onCardUpdate }: CardDetailDialo
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
 
-  // ... other functions remain the same
-
   const handleSave = async () => {
-    // ... existing save logic
+    if (!card) return;
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("cards")
+        .update({
+          title,
+          description,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", card.id);
+
+      if (error) throw error;
+
+      toast.success("Card atualizado com sucesso!");
+      setIsEditing(false);
+      onCardUpdate?.(null);
+    } catch (error: any) {
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const formatDateTime = (dateString: string | null) => {
-    // ... existing formatDateTime function
+  const formatDateTime = (dateString: string | null): string => {
+    if (!dateString) return "Não disponível";
+    try {
+      return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", {
+        locale: ptBR,
+      });
+    } catch {
+      return "Data inválida";
+    }
   };
 
-  const getStatusColor = (status: string | null) => {
-    // ... existing getStatusColor function
+  const getStatusColor = (status: string | null): string => {
+    if (!status) return "bg-gray-100 text-gray-800";
+    const lowerStatus = status.toLowerCase();
+    if (lowerStatus.includes("won") || lowerStatus.includes("ganho")) {
+      return "bg-green-100 text-green-800";
+    }
+    if (lowerStatus.includes("lost") || lowerStatus.includes("perdido")) {
+      return "bg-red-100 text-red-800";
+    }
+    if (lowerStatus.includes("pending") || lowerStatus.includes("pendente")) {
+      return "bg-yellow-100 text-yellow-800";
+    }
+    return "bg-blue-100 text-blue-800";
   };
 
   const loadAnalysisData = async () => {
@@ -69,7 +132,7 @@ export default function CardDetailDialog({ card, onCardUpdate }: CardDetailDialo
     try {
       const { data, error } = await supabase
         .from("lead_data")
-        .select("notes, updated_at")
+        .select("name, email, phone, notes, updated_at")
         .eq("card_id", card.id)
         .single();
 
