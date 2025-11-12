@@ -1,12 +1,28 @@
-import { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageSquare } from 'lucide-react';
+import ChatMessageBubble from './ChatMessageBubble';
+
+interface ConversationSummaryProps {
+  summary?: string;
+  description?: string;
+}
+
+type Role = 'agent' | 'client' | 'system';
+type ParsedRole = Role | 'unknown';
+
+type ParsedLine = {
+  role: ParsedRole;
+  time?: string;
+  name?: string;
+  message?: string;
+  metaNameOnly?: boolean;
+};
 
 /**
- * Tenta identificar timestamp [DD/MM/YYYY HH:MM]
+ * Tenta identificar timestamp [HH:MM]
  */
 function extractTime(line: string) {
-  const m = line.match(/\[(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2})\]/);
+  const m = line.match(/\[(\d{2}:\d{2})\]/);
   return m ? m[1] : undefined;
 }
 
@@ -14,42 +30,186 @@ function extractTime(line: string) {
  * Normaliza a linha removendo timestamp inicial
  */
 function stripTime(line: string) {
-  return line.replace(/^\s*\[\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}\]\s*/, '').trim();
+  return line.replace(/^\s*\[\d{2}:\d{2}\]\s*/, '').trim();
 }
 
-interface ConversationSummaryProps {
-  summary?: string | null;
-  description?: string | null;
+/**
+ * Limpa nome removendo emojis/labels e espaços extras
+ */
+function normalizeName(raw?: string) {
+  if (!raw) return undefined;
+  return raw
+    .replace(/🧑‍💼|👤/g, '')
+    .replace(/\b(Atendente|Cliente)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-export function ConversationSummary({ summary, description }: ConversationSummaryProps) {
-  const messages = useMemo(() => {
-    if (!description) return [];
-    
-    const lines = description.split('\n').filter(line => line.trim());
-    const chatMessages: Array<{time?: string; name: string; message: string}> = [];
-    
-    for (const line of lines) {
-      const time = extractTime(line);
-      const cleanLine = stripTime(line);
-      
-      const match = cleanLine.match(/^(.+?):\s*(.+)$/);
-      if (match) {
-        const [, name, message] = match;
-        chatMessages.push({
-          time,
-          name: name.trim(),
-          message: message.trim()
-        });
-      }
-    }
-    
-    return chatMessages;
-  }, [description]);
+/**
+ * Detecta se a linha é claramente de sistema (eventos)
+ */
+function isSystemEvent(line: string) {
+  const lower = line.toLowerCase();
+  return (
+    /conversa.*encerrad/.test(lower) ||
+    /transferid/.test(lower) ||
+    /atribuíd|atribuid/.test(lower) ||
+    /fechad|closed/.test(lower) ||
+    /resolvid|finalizad/.test(lower)
+  );
+}
 
-  if (!summary && !description) {
-    return null;
+/**
+ * Detecta papel por keywords/emoji e extrai nome/mensagem
+ * Aceita padrões:
+ * [20:34] 🧑‍💼 Diego: mensagem
+ * [20:34] 👤 João: mensagem
+ * [20:34] Atendente Diego: mensagem
+ * [20:34] Cliente João: mensagem
+ * [20:34] Diego: mensagem
+ * [20:34] Diego:
+ */
+function parseLine(raw: string): ParsedLine {
+  const time = extractTime(raw);
+  const line = stripTime(raw);
+  const lower = line.toLowerCase();
+
+  // Eventos de sistema reais
+  if (isSystemEvent(line)) {
+    return { role: 'system', time, message: line };
   }
+
+  const isAgent =
+    line.includes('🧑‍💼') ||
+    /\batendente\b/.test(lower);
+  const isClient =
+    line.includes('👤') ||
+    /\bcliente\b/.test(lower);
+
+  // Regex ampla permitindo emojis/labels antes do nome
+  const withMessage =
+    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Cliente)?\s*([^:]+):\s*(.+)$/i);
+  const nameOnly =
+    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Cliente)?\s*([^:]+):\s*$/i);
+
+  if (withMessage) {
+    const name = normalizeName((withMessage[1] || '').trim());
+    const message = (withMessage[2] || '').trim();
+    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
+    return { role, time, name, message };
+  }
+
+  if (nameOnly) {
+    const name = normalizeName((nameOnly[1] || '').trim());
+    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
+    // Metadado "Nome:" sem conteúdo — deve fundir com próxima linha
+    return { role, time, name, metaNameOnly: true };
+  }
+
+  // Sem padrão explícito — tratar como mensagem "solta"
+  // Papel será herdado pelo renderizador
+  return { role: 'unknown', time, message: line };
+}
+
+export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
+  const renderDescription = (text: string) => {
+    if (!text) return null;
+    const lines = text.split('\n').filter((l) => l.trim().length > 0);
+
+    const bubbles: Array<{
+      role: Role;
+      time?: string;
+      name?: string;
+      message: string;
+    }> = [];
+
+    let lastRole: Role = 'client';
+    let lastName: string | undefined;
+    let i = 0;
+
+    while (i < lines.length) {
+      const raw = lines[i];
+      const parsed = parseLine(raw);
+
+      // Fundir "Nome:" com próxima linha
+      if (parsed.metaNameOnly) {
+        // procurar próxima linha não vazia
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim().length === 0) j++;
+        if (j < lines.length) {
+          const nextParsed = parseLine(lines[j]);
+          const effectiveRole: Role =
+            nextParsed.role === 'unknown'
+              ? (parsed.role !== 'unknown' ? (parsed.role as Role) : lastRole)
+              : (nextParsed.role as Role);
+
+          const effectiveName =
+            normalizeName(nextParsed.name) ||
+            parsed.name ||
+            lastName;
+
+          const message = (nextParsed.message || '').trim();
+          if (message.length > 0) {
+            bubbles.push({
+              role: effectiveRole,
+              time: nextParsed.time || parsed.time,
+              name: effectiveName,
+              message,
+            });
+            lastRole = effectiveRole;
+            if (effectiveName) lastName = effectiveName;
+          }
+          i = j + 1;
+          continue;
+        } else {
+          // Não há próxima linha — ignorar metadado solto
+          i++;
+          continue;
+        }
+      }
+
+      if (parsed.role === 'system') {
+        bubbles.push({
+          role: 'system',
+          time: parsed.time,
+          message: parsed.message || '',
+        });
+        i++;
+        continue;
+      }
+
+      // Mensagem comum — herdar papel/nome quando necessário
+      const effectiveRole: Role =
+        parsed.role === 'unknown' ? lastRole : (parsed.role as Role);
+
+      const effectiveName =
+        normalizeName(parsed.name) || lastName;
+
+      const message = (parsed.message || '').trim();
+      if (message.length > 0) {
+        bubbles.push({
+          role: effectiveRole,
+          time: parsed.time,
+          name: effectiveName,
+          message,
+        });
+        lastRole = effectiveRole;
+        if (effectiveName) lastName = effectiveName;
+      }
+
+      i++;
+    }
+
+    return bubbles.map((b, idx) => (
+      <ChatMessageBubble
+        key={idx}
+        role={b.role}
+        time={b.time}
+        name={b.name}
+        message={b.message}
+      />
+    ));
+  };
 
   return (
     <Card>
@@ -59,33 +219,30 @@ export function ConversationSummary({ summary, description }: ConversationSummar
           Resumo da Conversa
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {summary && (
-          <div className="p-3 bg-muted/30 rounded-lg">
-            <p className="text-sm text-foreground">{summary}</p>
+      <CardContent className="space-y-3">
+        {summary ? (
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <p className="text-sm text-foreground leading-relaxed">{summary}</p>
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">
+            Nenhum resumo disponível ainda. Clique em "Analisar com IA" para gerar.
+          </p>
         )}
-        
-        {messages.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-muted-foreground">Histórico de Mensagens:</h4>
-            <div className="space-y-1 max-h-60 overflow-y-auto">
-              {messages.map((msg, index) => (
-                <div key={index} className="flex items-start gap-2 text-sm">
-                  {(msg.time || msg.name) && (
-                    <span className="mr-1 text-[11px] text-muted-foreground tabular-nums">
-                      [{msg.time}] {msg.name}:
-                    </span>
-                  )}
-                  <span className={msg.name ? "ml-1" : ""}>
-                    {msg.message || "(sem texto)"}
-                  </span>
-                </div>
-              ))}
+
+        {description && (
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+              Ver conversa completa
+            </summary>
+            <div className="mt-2 p-3 bg-muted/30 rounded-lg max-h-[400px] overflow-y-auto">
+              <div className="space-y-2">
+                {renderDescription(description)}
+              </div>
             </div>
-          </div>
+          </details>
         )}
       </CardContent>
     </Card>
   );
-}
+};
