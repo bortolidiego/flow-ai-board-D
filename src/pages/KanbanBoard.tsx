@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "react-hot-toast";
 import { Plus, BarChart3 } from "lucide-react";
 
-interface KanbanCard {
+interface CardData {
   id: string;
   title: string;
   description?: string;
@@ -63,8 +63,8 @@ export default function KanbanBoard() {
     refreshCards
   } = useKanbanData();
 
-  const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
-  const [completionCard, setCompletionCard] = useState<KanbanCard | null>(null);
+  const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
+  const [completionCard, setCompletionCard] = useState<CardData | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Mock columns data - replace with actual data from pipeline
@@ -73,6 +73,29 @@ export default function KanbanBoard() {
     { id: "col-2", name: "Em Progresso", position: 1 },
     { id: "col-3", name: "Concluído", position: 2 },
   ];
+
+  // Convert cards to CardData format
+  const cardsData: CardData[] = cards.map(card => ({
+    id: card.id,
+    title: card.title,
+    description: card.description,
+    priority: card.priority,
+    assignee: card.assignee,
+    column_id: card.columnId, // Convert columnId to column_id
+    position: card.position,
+    created_at: card.created_at,
+    updated_at: card.updated_at,
+    funnel_score: card.funnel_score,
+    service_quality_score: card.service_quality_score,
+    lifecycle_progress_percent: card.lifecycle_progress_percent,
+    value: card.value,
+    conversation_status: card.conversation_status,
+    subject: card.subject,
+    product_item: card.product_item,
+    chatwoot_contact_name: card.chatwoot_contact_name,
+    chatwoot_contact_email: card.chatwoot_contact_email,
+    chatwoot_agent_name: card.chatwoot_agent_name,
+  }));
 
   const handleDragEnd = async (result: DragEndResult) => {
     if (!result.destination) return;
@@ -102,7 +125,7 @@ export default function KanbanBoard() {
     }
   };
 
-  const handleCardClick = (card: KanbanCard) => {
+  const handleCardClick = (card: CardData) => {
     setSelectedCard(card);
     setIsDialogOpen(true);
   };
@@ -113,7 +136,7 @@ export default function KanbanBoard() {
     refreshCards();
   };
 
-  const handleCompletion = (card: KanbanCard) => {
+  const handleCompletion = (card: CardData) => {
     setCompletionCard(card);
   };
 
@@ -162,7 +185,7 @@ export default function KanbanBoard() {
                   >
                     <Column
                       column={column}
-                      cards={cards.filter((card) => card.column_id === column.id)}
+                      cards={cardsData.filter((card) => card.column_id === column.id)}
                       onCardClick={handleCardClick}
                       onCardCompletion={handleCompletion}
                       isDraggingOver={snapshot.isDraggingOver}

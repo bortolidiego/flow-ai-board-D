@@ -12,11 +12,33 @@ interface Column {
   position: number;
 }
 
+interface CardData {
+  id: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  assignee?: string;
+  column_id: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  funnel_score?: number;
+  service_quality_score?: number;
+  lifecycle_progress_percent?: number;
+  value?: number;
+  conversation_status?: string;
+  subject?: string;
+  product_item?: string;
+  chatwoot_contact_name?: string;
+  chatwoot_contact_email?: string;
+  chatwoot_agent_name?: string;
+}
+
 interface ColumnProps {
   column: Column;
-  cards: KanbanCard[];
-  onCardClick: (card: KanbanCard) => void;
-  onCardCompletion: (card: KanbanCard) => void;
+  cards: CardData[];
+  onCardClick: (card: CardData) => void;
+  onCardCompletion: (card: CardData) => void;
   isDraggingOver: boolean;
 }
 
@@ -59,7 +81,7 @@ export const Column: React.FC<ColumnProps> = ({
                     )}
                   >
                     <KanbanCard
-                      card={card}
+                      {...card}
                       onClick={() => onCardClick(card)}
                       onComplete={() => onCardCompletion(card)}
                     />

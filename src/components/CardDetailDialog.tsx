@@ -142,8 +142,8 @@ export default function CardDetailDialog({ card, onCardUpdate }: CardDetailDialo
       }
 
       // Convert lead_data to Message format
-      const messageData = data && data.notes ? [{
-        timestamp: data.updated_at || new Date().toISOString(),
+      const messageData = (data && 'notes' in data && data.notes) ? [{
+        timestamp: ('updated_at' in data ? data.updated_at : null) || new Date().toISOString(),
         sender: card?.chatwoot_contact_name || "Cliente",
         text: data.notes
       }] : [];
