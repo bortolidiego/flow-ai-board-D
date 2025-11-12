@@ -5,9 +5,6 @@ import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { Column } from "@/components/Column";
 import { KanbanCard } from '@/components/KanbanCard';
 import CardDetailDialog from '@/components/CardDetailDialog';
-import { CardCompletionDialog } from '@/components/CardCompletionDialog';
-import { useKanbanData } from '@/hooks/useKanbanData';
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "react-hot-toast";
 import { Plus, BarChart3 } from "lucide-react";
 
@@ -51,51 +48,58 @@ interface DragEndResult {
   draggableId: string;
 }
 
+// Mock data for now
+const mockCards: CardData[] = [
+  {
+    id: "1",
+    title: "Card de Exemplo 1",
+    description: "Este é um card de exemplo",
+    priority: "alta",
+    assignee: "João Silva",
+    column_id: "col-1",
+    position: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    funnel_score: 85,
+    service_quality_score: 90,
+    lifecycle_progress_percent: 75,
+    value: 1500,
+    conversation_status: "em_andamento",
+    subject: "Orçamento para reforma",
+    product_item: "Reforma residencial",
+    chatwoot_contact_name: "Maria Santos",
+  },
+  {
+    id: "2",
+    title: "Card de Exemplo 2",
+    description: "Outro card de exemplo",
+    priority: "media",
+    assignee: "Ana Costa",
+    column_id: "col-2",
+    position: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    funnel_score: 60,
+    service_quality_score: 80,
+    lifecycle_progress_percent: 50,
+    value: 800,
+    conversation_status: "aguardando",
+    subject: "Consulta sobre produto",
+    product_item: "Consultoria",
+    chatwoot_contact_name: "Pedro Oliveira",
+  },
+];
+
+const mockColumns: Column[] = [
+  { id: "col-1", name: "A Fazer", position: 0 },
+  { id: "col-2", name: "Em Progresso", position: 1 },
+  { id: "col-3", name: "Concluído", position: 2 },
+];
+
 export default function KanbanBoard() {
-  const { 
-    pipeline,
-    cards,
-    pipelineConfig,
-    loading,
-    updateCardColumn,
-    deleteCards,
-    bulkUpdateCardColumn,
-    refreshCards
-  } = useKanbanData();
-
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
-  const [completionCard, setCompletionCard] = useState<CardData | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  // Mock columns data - replace with actual data from pipeline
-  const columns: Column[] = [
-    { id: "col-1", name: "A Fazer", position: 0 },
-    { id: "col-2", name: "Em Progresso", position: 1 },
-    { id: "col-3", name: "Concluído", position: 2 },
-  ];
-
-  // Convert cards to CardData format
-  const cardsData: CardData[] = cards.map(card => ({
-    id: card.id,
-    title: card.title,
-    description: card.description,
-    priority: card.priority,
-    assignee: card.assignee,
-    column_id: card.columnId, // Convert columnId to column_id
-    position: 0, // Default position
-    created_at: card.createdAt || new Date().toISOString(),
-    updated_at: new Date().toISOString(), // Use default value since updatedAt doesn't exist
-    funnel_score: card.funnelScore,
-    service_quality_score: card.serviceQualityScore,
-    lifecycle_progress_percent: card.lifecycleProgressPercent,
-    value: card.value,
-    conversation_status: card.conversationStatus,
-    subject: card.subject,
-    product_item: card.productItem,
-    chatwoot_contact_name: card.chatwootContactName,
-    chatwoot_contact_email: undefined, // Default value
-    chatwoot_agent_name: undefined, // Default value
-  }));
+  const [cards, setCards] = useState<CardData[]>(mockCards);
 
   const handleDragEnd = async (result: DragEndResult) => {
     if (!result.destination) return;
@@ -111,14 +115,16 @@ export default function KanbanBoard() {
     }
 
     try {
-      const success = await updateCardColumn(draggableId, destination.droppableId);
+      // Update card column locally for now
+      setCards(prevCards => 
+        prevCards.map(card => 
+          card.id === draggableId 
+            ? { ...card, column_id: destination.droppableId }
+            : card
+        )
+      );
       
-      if (success) {
-        toast.success("Card movido com sucesso!");
-        refreshCards();
-      } else {
-        toast.error("Erro ao mover card");
-      }
+      toast.success("Card movido com sucesso!");
     } catch (error) {
       console.error("Erro ao processar movimento:", error);
       toast.error("Erro ao processar movimento");
@@ -133,35 +139,36 @@ export default function KanbanBoard() {
   const handleCloseDialog = () => {
     setSelectedCard(null);
     setIsDialogOpen(false);
-    refreshCards();
   };
 
   const handleCompletion = (card: CardData) => {
-    setCompletionCard(card);
+    // For now, just show a success message
+    toast.success("Card finalizado!");
   };
-
-  const handleCloseCompletionDialog = () => {
-    setCompletionCard(null);
-    refreshCards();
-  };
-
-  if (loading) {
-    return (
-        <div className="flex items-center justify-center h-96">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4 text-muted-foreground">Carregando...</p>
-          </div>
-        </div>
-      );
-  }
 
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between p-4 border-b">
         <h1 className="text-2xl font-bold">Kanban</h1>
         <div className="flex items-center gap-2">
-          <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2">
+          <button 
+            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
+            onClick={() => {
+              const newCard: CardData = {
+                id: Date.now().toString(),
+                title: "Novo Card",
+                description: "Descrição do novo card",
+                priority: "media",
+                assignee: "Sem responsável",
+                column_id: "col-1",
+                position: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+              setCards(prev => [newCard, ...prev]);
+              toast.success("Card criado!");
+            }}
+          >
             <Plus className="w-4 h-4" />
             Novo Card
           </button>
@@ -175,7 +182,7 @@ export default function KanbanBoard() {
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex-1 overflow-x-auto overflow-y-hidden">
           <div className="flex gap-4 p-4 h-full">
-            {columns.map((column) => (
+            {mockColumns.map((column) => (
               <Droppable key={column.id} droppableId={column.id}>
                 {(provided, snapshot) => (
                   <div
@@ -185,7 +192,7 @@ export default function KanbanBoard() {
                   >
                     <Column
                       column={column}
-                      cards={cardsData.filter((card) => card.column_id === column.id)}
+                      cards={cards.filter((card) => card.column_id === column.id)}
                       onCardClick={handleCardClick}
                       onCardCompletion={handleCompletion}
                       isDraggingOver={snapshot.isDraggingOver}
@@ -203,8 +210,6 @@ export default function KanbanBoard() {
         card={selectedCard} 
         onCardUpdate={handleCloseDialog}
       />
-
-      {/* Removed CardCompletionDialog since onCardUpdate prop doesn't exist */}
     </div>
   );
 }
