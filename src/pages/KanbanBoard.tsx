@@ -84,7 +84,7 @@ export default function KanbanBoard() {
     column_id: card.columnId, // Convert columnId to column_id
     position: 0, // Default position
     created_at: card.createdAt || new Date().toISOString(),
-    updated_at: card.updatedAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(), // Use default value since updatedAt doesn't exist
     funnel_score: card.funnelScore,
     service_quality_score: card.serviceQualityScore,
     lifecycle_progress_percent: card.lifecycleProgressPercent,
@@ -147,13 +147,13 @@ export default function KanbanBoard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Carregando...</p>
+        <div className="flex items-center justify-center h-96">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Carregando...</p>
+          </div>
         </div>
-      </div>
-    );
+      );
   }
 
   return (
