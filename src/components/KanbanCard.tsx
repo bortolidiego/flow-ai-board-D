@@ -28,6 +28,11 @@ interface KanbanCardProps {
   chatwoot_agent_name?: string;
   onClick?: () => void;
   onComplete?: () => void;
+  onCardClick?: () => void;
+  pipelineConfig?: any;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelectToggle?: () => void;
 }
 
 export const KanbanCard: React.FC<KanbanCardProps> = ({
@@ -36,6 +41,10 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   description,
   priority,
   assignee,
+  column_id,
+  position,
+  created_at,
+  updated_at,
   funnel_score,
   service_quality_score,
   lifecycle_progress_percent,
@@ -47,6 +56,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   chatwoot_agent_name,
   onClick,
   onComplete,
+  onCardClick,
+  pipelineConfig,
+  selectionMode,
+  isSelected,
+  onSelectToggle,
 }) => {
   const getPriorityColor = (priority?: string) => {
     switch (priority?.toLowerCase()) {
@@ -76,13 +90,19 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     return "bg-blue-100 text-blue-800";
   };
 
+  const handleClick = () => {
+    if (onClick) onClick();
+    if (onCardClick) onCardClick();
+  };
+
   return (
     <Card 
       className={cn(
         "cursor-pointer transition-all hover:shadow-md",
-        "border-l-4 border-l-primary"
+        "border-l-4 border-l-primary",
+        isSelected && "ring-2 ring-primary"
       )}
-      onClick={onClick}
+      onClick={handleClick}
     >
       <CardContent className="p-3">
         <div className="space-y-2">

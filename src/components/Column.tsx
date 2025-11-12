@@ -58,48 +58,36 @@ export const Column: React.FC<ColumnProps> = ({
         </span>
       </div>
 
-      <Droppable droppableId={column.id}>
-        {(provided, snapshot) => (
+      <div
+        className={cn(
+          "space-y-2 min-h-[500px] transition-colors rounded",
+          isDraggingOver && "bg-primary/10"
+        )}
+      >
+        {cards.map((card, index) => (
           <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
+            key={card.id}
             className={cn(
-              "space-y-2 min-h-[500px] transition-colors rounded",
-              snapshot.isDraggingOver && "bg-primary/10"
+              "transition-transform",
+              isDraggingOver && "rotate-2 shadow-lg"
             )}
           >
-            {cards.map((card, index) => (
-              <Draggable key={card.id} draggableId={card.id} index={index}>
-                {(provided, snapshot) => (
-                  <div
-                    ref={provided.innerRef}
-                    {...provided.draggableProps}
-                    {...provided.dragHandleProps}
-                    className={cn(
-                      "transition-transform",
-                      snapshot.isDragging && "rotate-2 shadow-lg"
-                    )}
-                  >
-                    <KanbanCard
-                      {...card}
-                      onClick={() => onCardClick(card)}
-                      onComplete={() => onCardCompletion(card)}
-                    />
-                  </div>
-                )}
-              </Draggable>
-            ))}
-            {provided.placeholder}
-            
-            {cards.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Plus className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Arraste cards aqui</p>
-              </div>
-            )}
+            <KanbanCard
+              {...card}
+              onClick={() => onCardClick(card)}
+              onComplete={() => onCardCompletion(card)}
+              onCardClick={() => onCardClick(card)}
+            />
+          </div>
+        ))}
+        
+        {cards.length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            <Plus className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Arraste cards aqui</p>
           </div>
         )}
-      </Droppable>
+      </div>
     </div>
   );
 };
