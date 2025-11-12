@@ -4,12 +4,40 @@ import React, { useState } from "react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { Column } from "@/components/Column";
 import { KanbanCard } from '@/components/KanbanCard';
-import CardDetailDialog from '@/components/CardDetailDialog'; // Fixed import
+import CardDetailDialog from '@/components/CardDetailDialog';
 import { CardCompletionDialog } from '@/components/CardCompletionDialog';
 import { useKanbanData } from '@/hooks/useKanbanData';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "react-hot-toast";
 import { Plus, BarChart3 } from "lucide-react";
+
+interface KanbanCard {
+  id: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  assignee?: string;
+  column_id: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  funnel_score?: number;
+  service_quality_score?: number;
+  lifecycle_progress_percent?: number;
+  value?: number;
+  conversation_status?: string;
+  subject?: string;
+  product_item?: string;
+  chatwoot_contact_name?: string;
+  chatwoot_contact_email?: string;
+  chatwoot_agent_name?: string;
+}
+
+interface Column {
+  id: string;
+  name: string;
+  position: number;
+}
 
 interface DragEndResult {
   destination: {
@@ -25,16 +53,26 @@ interface DragEndResult {
 
 export default function KanbanBoard() {
   const { 
-    columns, 
-    cards, 
-    isLoading, 
-    error,
-    refetch 
+    pipeline,
+    cards,
+    pipelineConfig,
+    loading,
+    updateCardColumn,
+    deleteCards,
+    bulkUpdateCardColumn,
+    refreshCards
   } = useKanbanData();
 
   const [selectedCard, setSelectedCard] = useState<KanbanCard | null>(null);
   const [completionCard, setCompletionCard] = useState<KanbanCard | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Mock columns data - replace with actual data from pipeline
+  const columns: Column[] = [
+    { id: "col-1", name: "A Fazer", position: 0 },
+    { id: "col-2", name: "Em Progresso", position: 1 },
+    { id: "col-3", name: "Concluído", position: 2 },
+  ];
 
   const handleDragEnd = async (result: DragEndResult) => {
     if (!result.destination) return;
@@ -50,28 +88,14 @@ export default function KanbanBoard() {
     }
 
     try {
-      // Encontrar o card sendo movido
-      const card = cards.find(c => c.id === draggableId);
-      if (!card) return;
-
-      // Atualizar o card no banco
-      const { error } = await supabase
-        .from("cards")
-        .update({
-          column_id: destination.droppableId,
-          position: destination.index,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", draggableId);
-
-      if (error) {
-        console.error("Erro ao mover card:", error);
+      const success = await updateCardColumn(draggableId, destination.droppableId);
+      
+      if (success) {
+        toast.success("Card movido com sucesso!");
+        refreshCards();
+      } else {
         toast.error("Erro ao mover card");
-        return;
       }
-
-      toast.success("Card movido com sucesso!");
-      refetch(); // Atualizar dados
     } catch (error) {
       console.error("Erro ao processar movimento:", error);
       toast.error("Erro ao processar movimento");
@@ -86,7 +110,7 @@ export default function KanbanBoard() {
   const handleCloseDialog = () => {
     setSelectedCard(null);
     setIsDialogOpen(false);
-    refetch(); // Atualizar dados ao fechar
+    refreshCards();
   };
 
   const handleCompletion = (card: KanbanCard) => {
@@ -95,31 +119,15 @@ export default function KanbanBoard() {
 
   const handleCloseCompletionDialog = () => {
     setCompletionCard(null);
-    refetch(); // Atualizar dados ao fechar
+    refreshCards();
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mx-auto"></div>
           <p className="mt-4 text-muted-foreground">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <p className="text-red-500 mb-4">Erro ao carregar dados: {error}</p>
-          <button 
-            onClick={refetch}
-            className="px-4 py-2 bg-primary text-white rounded hover:bg-primary/90"
-          >
-            Tentar novamente
-          </button>
         </div>
       </div>
     );
