@@ -1,421 +1,437 @@
 import { useState, useEffect } from 'react';
-import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, AlertCircle, Building2, Plug } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { useWorkspace } from '@/hooks/useWorkspace';
-import { useUserRole } from '@/hooks/useUserRole';
-import { useKanbanData } from '@/hooks/useKanbanData';
-import { PipelineStagesManager } from '@/components/PipelineStagesManager';
-import { CustomFieldsManager } from '@/components/CustomFieldsManager';
-import { FunnelLifecycleManager } from '@/components/FunnelLifecycleManager';
-import { MovementRulesManager } from '@/components/MovementRulesManager';
-import { InactivityRulesManager } from '@/components/InactivityRulesManager';
-import { AIPromptBuilder } from '@/components/AIPromptBuilder';
-import { ChatwootSettings } from '@/components/ChatwootSettings';
-import { IntegrationStatusBadge } from '@/components/IntegrationStatusBadge';
-import { Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+    import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+    import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    import { useWorkspace } from '@/hooks/useWorkspace';
+    import { useToast } from '@/hooks/use-toast';
+    import { Loader2, Settings, Brain, Wifi, MessageSquare } from 'lucide-react';
+    import { AIPromptBuilder } from '@/components/AIPromptBuilder';
+    import { CustomFieldsManager } from '@/components/CustomFieldsManager';
+    import { FunnelTypesManager } from '@/components/FunnelTypesManager';
+    import { PipelineStagesManager } from '@/components/PipelineStagesManager';
+    import { EvolutionSettings } from '@/components/EvolutionSettings'; // Importar o novo componente
+    import { ChatwootSettings } from '@/components/ChatwootSettings';
+    import { InactivityRulesManager } from '@/components/InactivityRulesManager';
+    import { MovementRulesManager } from '@/components/MovementRulesManager';
+    import { BehaviorTemplateSelector } from '@/components/BehaviorTemplateSelector';
+    import { BehaviorTemplatePreview } from '@/components/BehaviorTemplatePreview';
+    import { Button } from '@/components/ui/button';
+    import { supabase } from '@/integrations/supabase/client';
 
-const Brain = () => {
-  const { workspace, loading: workspaceLoading, updateWorkspaceName } = useWorkspace();
-  const { isAdmin } = useUserRole();
-  const { pipeline, loading, fetchPipeline } = useKanbanData(workspace?.id);
-  const [customFields, setCustomFields] = useState<any[]>([]);
-  const [templateInfo, setTemplateInfo] = useState<any>(null);
-  const [funnelTypes, setFunnelTypes] = useState<any[]>([]);
-  const [aiConfig, setAiConfig] = useState<any>(null);
-  const [chatwootIntegration, setChatwootIntegration] = useState<any>(null);
-  const [workspaceName, setWorkspaceName] = useState('');
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (workspace) {
-      setWorkspaceName(workspace.name);
+    interface CustomField {
+      id: string;
+      field_name: string;
+      field_label: string;
+      field_type: string;
+      field_options?: any;
+      is_required: boolean;
+      position: number;
     }
-  }, [workspace]);
 
-  useEffect(() => {
-    if (pipeline) {
-      loadCustomFields();
-      loadTemplateInfo();
-      loadFunnelTypes();
-      loadAiConfig();
-      loadChatwootIntegration();
+    interface Column {
+      id: string;
+      name: string;
+      position: number;
     }
-  }, [pipeline]);
 
-  const handleUpdateWorkspaceName = async () => {
-    if (!workspace || workspaceName === workspace.name) return;
-    
-    const { error } = await updateWorkspaceName(workspaceName);
-    if (error) {
-      toast({
-        title: 'Erro ao atualizar nome',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } else {
-      toast({
-        title: 'Nome atualizado',
-        description: 'O nome do workspace foi atualizado com sucesso.',
-      });
+    interface FunnelConfig {
+      id: string;
+      funnel_type: string;
+      funnel_name: string;
+      color: string;
+      position: number;
     }
-  };
 
-  const loadCustomFields = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_custom_fields')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .order('position');
-
-      if (error) throw error;
-      setCustomFields(data || []);
-    } catch (error) {
-      console.error('Error loading custom fields:', error);
+    interface BehaviorTemplate {
+      id: string;
+      name: string;
+      business_type: string;
+      description: string;
+      config: any;
     }
-  };
 
-  const loadTemplateInfo = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_behaviors')
-        .select('*, behavior_templates(*)')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
+    export default function BrainPage() {
+      const { workspace, loading: workspaceLoading, fetchWorkspace } = useWorkspace();
+      const { toast } = useToast();
+      const [pipelineId, setPipelineId] = useState<string | null>(null);
+      const [loadingPipeline, setLoadingPipeline] = useState(true);
+      const [customFields, setCustomFields] = useState<CustomField[]>([]);
+      const [columns, setColumns] = useState<Column[]>([]);
+      const [funnelTypes, setFunnelTypes] = useState<FunnelConfig[]>([]);
+      const [selectedTemplate, setSelectedTemplate] = useState<BehaviorTemplate | null>(null);
+      const [isApplyingTemplate, setIsApplyingTemplate] = useState(false);
 
-      if (error && error.code !== 'PGRST116') throw error;
-      setTemplateInfo(data);
-    } catch (error) {
-      console.error('Error loading template info:', error);
-    }
-  };
+      useEffect(() => {
+        if (workspace && !workspaceLoading) {
+          if (workspace.active_pipeline_id) {
+            setPipelineId(workspace.active_pipeline_id);
+            fetchPipelineData(workspace.active_pipeline_id);
+          } else {
+            setLoadingPipeline(false);
+          }
+        }
+      }, [workspace, workspaceLoading]);
 
-  const loadFunnelTypes = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('funnel_config')
-        .select('*')
-        .eq('pipeline_id', pipeline.id);
+      const fetchPipelineData = async (currentPipelineId: string) => {
+        setLoadingPipeline(true);
+        try {
+          // Fetch custom fields
+          const { data: customFieldsData, error: customFieldsError } = await supabase
+            .from('pipeline_custom_fields')
+            .select('*')
+            .eq('pipeline_id', currentPipelineId)
+            .order('position');
+          if (customFieldsError) throw customFieldsError;
+          setCustomFields(customFieldsData || []);
 
-      if (error) throw error;
-      setFunnelTypes(data || []);
-    } catch (error) {
-      console.error('Error loading funnel types:', error);
-    }
-  };
+          // Fetch columns
+          const { data: columnsData, error: columnsError } = await supabase
+            .from('columns')
+            .select('*')
+            .eq('pipeline_id', currentPipelineId)
+            .order('position');
+          if (columnsError) throw columnsError;
+          setColumns(columnsData || []);
 
-  const loadAiConfig = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_ai_config')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
+          // Fetch funnel types
+          const { data: funnelTypesData, error: funnelTypesError } = await supabase
+            .from('funnel_config')
+            .select('*')
+            .eq('pipeline_id', currentPipelineId)
+            .order('position');
+          if (funnelTypesError) throw funnelTypesError;
+          setFunnelTypes(funnelTypesData || []);
 
-      if (error && error.code !== 'PGRST116') throw error;
-      setAiConfig(data);
-    } catch (error) {
-      console.error('Error loading AI config:', error);
-    }
-  };
+        } catch (error: any) {
+          console.error('Error fetching pipeline data:', error);
+          toast({
+            title: 'Erro ao carregar dados do pipeline',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } finally {
+          setLoadingPipeline(false);
+        }
+      };
 
-  const loadChatwootIntegration = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('chatwoot_integrations')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
+      const handlePipelineDataUpdate = () => {
+        if (pipelineId) {
+          fetchPipelineData(pipelineId);
+        }
+      };
 
-      if (error && error.code !== 'PGRST116') throw error;
-      setChatwootIntegration(data);
-    } catch (error) {
-      console.error('Error loading Chatwoot integration:', error);
-    }
-  };
+      const handleCreatePipeline = async () => {
+        if (!workspace) {
+          toast({
+            title: 'Erro',
+            description: 'Nenhum workspace ativo para criar pipeline.',
+            variant: 'destructive',
+          });
+          return;
+        }
 
-  const getChatwootStatus = () => {
-    if (!chatwootIntegration) return 'not-configured';
-    return chatwootIntegration.active ? 'active' : 'paused';
-  };
+        setLoadingPipeline(true);
+        try {
+          // Create pipeline
+          const { data: pipelineData, error: pipelineError } = await supabase
+            .from('pipelines')
+            .insert({ workspace_id: workspace.id })
+            .select()
+            .single();
 
-  if (workspaceLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+          if (pipelineError) throw pipelineError;
 
-  if (!pipeline) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-        <div className="container mx-auto px-6 py-8">
-          <Card className="border-2 border-dashed border-primary/30">
-            <CardContent className="flex flex-col items-center justify-center py-16 px-6">
-              <div className="relative mb-6">
-                <BrainIcon className="w-20 h-20 text-primary/30" />
-                <Sparkles className="w-8 h-8 text-secondary absolute -top-2 -right-2 animate-pulse" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">Nenhum pipeline configurado</h2>
-              <p className="text-muted-foreground text-center mb-6 max-w-md">
-                Comece criando seu primeiro pipeline usando um template inteligente.
-              </p>
-              <Button onClick={() => navigate('/brain/new')} size="lg" className="gap-2">
-                <Sparkles className="w-5 h-5" />
-                Criar Pipeline
+          // Set as active pipeline for the workspace
+          await supabase
+            .from('workspaces')
+            .update({ active_pipeline_id: pipelineData.id })
+            .eq('id', workspace.id);
+
+          setPipelineId(pipelineData.id);
+          await fetchWorkspace(); // Re-fetch workspace to update active_pipeline_id
+          await fetchPipelineData(pipelineData.id);
+
+          toast({
+            title: 'Pipeline criado',
+            description: 'Um novo pipeline foi criado e definido como ativo.',
+          });
+        } catch (error: any) {
+          console.error('Error creating pipeline:', error);
+          toast({
+            title: 'Erro ao criar pipeline',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } finally {
+          setLoadingPipeline(false);
+        }
+      };
+
+      const handleApplyTemplate = async () => {
+        if (!selectedTemplate || !pipelineId) return;
+
+        setIsApplyingTemplate(true);
+        try {
+          // Apply custom fields
+          const customFieldsToInsert = selectedTemplate.config.custom_fields.map((field: any, index: number) => ({
+            pipeline_id: pipelineId,
+            field_name: field.field_name,
+            field_label: field.field_label,
+            field_type: field.field_type,
+            field_options: field.field_options || null,
+            is_required: field.is_required || false,
+            position: index,
+          }));
+          if (customFieldsToInsert.length > 0) {
+            const { error } = await supabase.from('pipeline_custom_fields').insert(customFieldsToInsert);
+            if (error) throw error;
+          }
+
+          // Apply funnel types
+          const funnelTypesToInsert = selectedTemplate.config.funnel_types.map((funnel: any, index: number) => ({
+            pipeline_id: pipelineId,
+            funnel_type: funnel.funnel_type,
+            funnel_name: funnel.funnel_name,
+            color: funnel.color,
+            is_monetary: funnel.is_monetary || false,
+            priority: funnel.priority || 0,
+            lifecycle_stages: funnel.lifecycle_stages || [],
+            inactivity_days: funnel.inactivity_days || 0,
+            position: index,
+          }));
+          if (funnelTypesToInsert.length > 0) {
+            const { error } = await supabase.from('funnel_config').insert(funnelTypesToInsert);
+            if (error) throw error;
+          }
+
+          // Apply AI config
+          const aiConfigToInsert = {
+            pipeline_id: pipelineId,
+            business_type: selectedTemplate.config.ai_config.business_type,
+            objectives: selectedTemplate.config.ai_config.objectives,
+            analyze_on_close: selectedTemplate.config.ai_config.analyze_on_close,
+            analyze_on_message: selectedTemplate.config.ai_config.analyze_on_message,
+            generated_prompt: '', // Will be generated by AIPromptBuilder
+            model_name: 'google/gemini-2.5-flash',
+            use_custom_prompt: false,
+            template_id: selectedTemplate.id,
+          };
+          const { error: aiConfigError } = await supabase.from('pipeline_ai_config').insert(aiConfigToInsert);
+          if (aiConfigError) throw aiConfigError;
+
+          // Apply pipeline behaviors (if any)
+          const pipelineBehaviorsToInsert = selectedTemplate.config.pipeline_behaviors?.map((behavior: any) => ({
+            pipeline_id: pipelineId,
+            behavior_template_id: behavior.behavior_template_id,
+            is_customized: behavior.is_customized || false,
+          })) || [];
+          if (pipelineBehaviorsToInsert.length > 0) {
+            const { error } = await supabase.from('pipeline_behaviors').insert(pipelineBehaviorsToInsert);
+            if (error) throw error;
+          }
+
+          toast({
+            title: 'Template aplicado',
+            description: 'As configurações do template foram aplicadas ao seu pipeline.',
+          });
+          handlePipelineDataUpdate();
+          setSelectedTemplate(null); // Clear selection after applying
+        } catch (error: any) {
+          console.error('Error applying template:', error);
+          toast({
+            title: 'Erro ao aplicar template',
+            description: error.message,
+            variant: 'destructive',
+          });
+        } finally {
+          setIsApplyingTemplate(false);
+        }
+      };
+
+
+      if (workspaceLoading || loadingPipeline) {
+        return (
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          </div>
+        );
+      }
+
+      if (!workspace) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 text-center">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Nenhum Workspace Encontrado</CardTitle>
+                <CardDescription>
+                  Parece que você não faz parte de nenhum workspace. Por favor, crie um ou peça para ser convidado.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => toast({ title: "Funcionalidade em desenvolvimento" })}>Criar Workspace</Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
+
+      if (!pipelineId) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 text-center">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Nenhum Pipeline Ativo</CardTitle>
+                <CardDescription>
+                  Seu workspace não possui um pipeline ativo. Crie um novo pipeline para começar a usar o Brain.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={handleCreatePipeline} disabled={loadingPipeline}>
+                  {loadingPipeline ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Criar Novo Pipeline
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
+
+      if (pipelineId && customFields.length === 0 && funnelTypes.length === 0 && !selectedTemplate) {
+        return (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] p-4 text-center">
+            <Card className="w-full max-w-4xl">
+              <CardHeader>
+                <CardTitle>Selecione um Template de Comportamento</CardTitle>
+                <CardDescription>
+                  Escolha um template para configurar rapidamente seu pipeline com campos personalizados, funis e configurações de IA.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <BehaviorTemplateSelector onSelect={setSelectedTemplate} />
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
+
+      if (selectedTemplate) {
+        return (
+          <div className="container mx-auto py-8">
+            <h2 className="text-2xl font-bold mb-6">Prévia do Template: {selectedTemplate.name}</h2>
+            <BehaviorTemplatePreview template={selectedTemplate} />
+            <div className="flex justify-end gap-4 mt-6">
+              <Button variant="outline" onClick={() => setSelectedTemplate(null)} disabled={isApplyingTemplate}>
+                Cancelar
               </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="container mx-auto px-6 py-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <BrainIcon className="w-10 h-10 text-primary" />
-                <Sparkles className="w-4 h-4 text-secondary absolute -top-1 -right-1 animate-pulse" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-                  AI Brain Configuration
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Configure como a IA analisa e gerencia seus cards
-                </p>
-              </div>
+              <Button onClick={handleApplyTemplate} disabled={isApplyingTemplate}>
+                {isApplyingTemplate ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Aplicar Template
+              </Button>
             </div>
-            {workspace && (
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-muted-foreground" />
-                {isAdmin ? (
-                  <Input
-                    value={workspaceName}
-                    onChange={(e) => setWorkspaceName(e.target.value)}
-                    onBlur={handleUpdateWorkspaceName}
-                    className="max-w-xs"
-                  />
-                ) : (
-                  <Badge variant="outline" className="text-lg px-3 py-1">
-                    {workspace.name}
-                  </Badge>
-                )}
-              </div>
-            )}
           </div>
-        </div>
+        );
+      }
 
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <Card className="border-primary/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Etapas</p>
-                    <p className="text-2xl font-bold">{pipeline.columns?.length || 0}</p>
-                  </div>
-                  <Columns3 className="w-8 h-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
+      return (
+        <div className="container mx-auto py-8">
+          <h1 className="text-3xl font-bold mb-6 flex items-center gap-3">
+            <Brain className="w-8 h-8 text-primary" />
+            Configurações do Brain
+          </h1>
 
-            <Card className="border-secondary/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Campos</p>
-                    <p className="text-2xl font-bold">{customFields.length}</p>
-                  </div>
-                  <Database className="w-8 h-8 text-secondary" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Funis</p>
-                    <p className="text-2xl font-bold">{funnelTypes.length}</p>
-                  </div>
-                  <Target className="w-8 h-8 text-accent" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={aiConfig ? "border-primary/20" : "border-destructive/20"}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">IA Config</p>
-                    <p className="text-sm font-semibold flex items-center gap-1">
-                      {aiConfig ? (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 text-primary" />
-                          Ativo
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="w-4 h-4 text-destructive" />
-                          Inativo
-                        </>
-                      )}
-                    </p>
-                  </div>
-                  <Sparkles className="w-8 h-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={
-              getChatwootStatus() === 'active' 
-                ? "border-primary/20" 
-                : getChatwootStatus() === 'paused'
-                ? "border-orange-500/20"
-                : "border-muted"
-            }>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">Chatwoot</p>
-                    <IntegrationStatusBadge status={getChatwootStatus()} size="sm" />
-                  </div>
-                  <Plug className={`w-8 h-8 ${
-                    getChatwootStatus() === 'active' 
-                      ? 'text-primary' 
-                      : getChatwootStatus() === 'paused'
-                      ? 'text-orange-500'
-                      : 'text-muted-foreground'
-                  }`} />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {templateInfo && (
-            <Card className="border-primary/30 bg-primary/5">
-              <CardContent className="py-4">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-sm font-semibold">
-                      Template: {templateInfo.behavior_templates?.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {templateInfo.behavior_templates?.description}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Tabs defaultValue="stages" className="space-y-6">
+          <Tabs defaultValue="ai-prompt" className="w-full">
             <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="stages" className="flex items-center gap-2">
-                <Columns3 className="w-4 h-4" />
-                Etapas
+              <TabsTrigger value="ai-prompt" className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                IA
               </TabsTrigger>
               <TabsTrigger value="custom-fields" className="flex items-center gap-2">
-                <Database className="w-4 h-4" />
+                <Settings className="w-4 h-4" />
                 Campos
               </TabsTrigger>
-              <TabsTrigger value="funnels" className="flex items-center gap-2">
-                <Target className="w-4 h-4" />
+              <TabsTrigger value="funnel-types" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
                 Funis
               </TabsTrigger>
-              <TabsTrigger value="card-movement" className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4" />
+              <TabsTrigger value="pipeline-stages" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Etapas
+              </TabsTrigger>
+              <TabsTrigger value="inactivity-rules" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
+                Inatividade
+              </TabsTrigger>
+              <TabsTrigger value="movement-rules" className="flex items-center gap-2">
+                <Settings className="w-4 h-4" />
                 Movimentação
               </TabsTrigger>
-              <TabsTrigger value="ai-behavior" className="flex items-center gap-2">
-                <Settings className="w-4 h-4" />
-                Comportamento IA
-              </TabsTrigger>
               <TabsTrigger value="integrations" className="flex items-center gap-2">
-                <Plug className="w-4 h-4" />
+                <Wifi className="w-4 h-4" />
                 Integrações
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="stages" className="space-y-4">
-              <PipelineStagesManager 
-                pipelineId={pipeline.id}
-                columns={pipeline.columns || []}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
+            <div className="mt-6 space-y-8">
+              <TabsContent value="ai-prompt">
+                <AIPromptBuilder pipelineId={pipelineId} customFields={customFields} onUpdate={handlePipelineDataUpdate} />
+              </TabsContent>
 
-            <TabsContent value="custom-fields" className="space-y-4">
-              <CustomFieldsManager 
-                pipelineId={pipeline.id}
-                onUpdate={() => {
-                  fetchPipeline();
-                  loadCustomFields();
-                }}
-              />
-            </TabsContent>
+              <TabsContent value="custom-fields">
+                <CustomFieldsManager pipelineId={pipelineId} onUpdate={handlePipelineDataUpdate} />
+              </TabsContent>
 
-            <TabsContent value="funnels" className="space-y-4">
-              <FunnelLifecycleManager 
-                pipelineId={pipeline.id}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
+              <TabsContent value="funnel-types">
+                <FunnelTypesManager pipelineId={pipelineId} onUpdate={handlePipelineDataUpdate} />
+              </TabsContent>
 
-            <TabsContent value="card-movement" className="space-y-4">
-              <MovementRulesManager
-                pipelineId={pipeline.id}
-                onUpdate={fetchPipeline}
-              />
-              <InactivityRulesManager
-                pipelineId={pipeline.id}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
+              <TabsContent value="pipeline-stages">
+                <PipelineStagesManager pipelineId={pipelineId} columns={columns} onUpdate={handlePipelineDataUpdate} />
+              </TabsContent>
 
-            <TabsContent value="ai-behavior" className="space-y-4">
-              <AIPromptBuilder
-                pipelineId={pipeline.id}
-                customFields={customFields}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
+              <TabsContent value="inactivity-rules">
+                <InactivityRulesManager pipelineId={pipelineId} onUpdate={handlePipelineDataUpdate} />
+              </TabsContent>
 
-            <TabsContent value="integrations" className="space-y-4">
-              <ChatwootSettings 
-                pipelineId={pipeline.id}
-              />
-            </TabsContent>
+              <TabsContent value="movement-rules">
+                <MovementRulesManager pipelineId={pipelineId} onUpdate={handlePipelineDataUpdate} />
+              </TabsContent>
+
+              <TabsContent value="integrations">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Wifi className="w-5 h-5" />
+                      Gerenciar Integrações
+                    </CardTitle>
+                    <CardDescription>
+                      Conecte seu pipeline a outras plataformas para automatizar a criação e atualização de cards.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <Tabs defaultValue="chatwoot">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="chatwoot" className="flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4" />
+                          Chatwoot
+                        </TabsTrigger>
+                        <TabsTrigger value="evolution" className="flex items-center gap-2">
+                          <Wifi className="w-4 h-4" />
+                          Evolution API
+                        </TabsTrigger>
+                      </TabsList>
+                      <div className="mt-6">
+                        <TabsContent value="chatwoot">
+                          <ChatwootSettings pipelineId={pipelineId} />
+                        </TabsContent>
+                        <TabsContent value="evolution">
+                          <EvolutionSettings pipelineId={pipelineId} />
+                        </TabsContent>
+                      </div>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </div>
           </Tabs>
         </div>
-      </div>
-    </div>
-  );
-};
-
-export default Brain;
+      );
+    }

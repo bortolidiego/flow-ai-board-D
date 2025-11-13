@@ -1,71 +1,68 @@
-import React from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AppLayout } from "./components/AppLayout";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-import KanbanBoard from "./pages/KanbanBoard";
-import Brain from "./pages/Brain";
-import BrainNew from "./pages/BrainNew";
-import Auth from "./pages/Auth";
-import AcceptInvite from "./pages/AcceptInvite";
-import Changelog from "./pages/Changelog";
-import NotFound from "./pages/NotFound";
-import ProvisionWrapper from "@/components/ProvisionWrapper";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+    import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
+    import { Toaster } from "@/components/ui/sonner";
+    import { ThemeProvider } from "@/components/theme-provider";
+    import { AppLayout } from "@/components/AppLayout";
+    import { ProtectedRoute } from "@/components/ProtectedRoute";
+    import { WorkspaceProvider } from "@/hooks/useWorkspace"; // Importar WorkspaceProvider
 
-const queryClient = new QueryClient();
+    import Index from "@/pages/Index";
+    import Login from "@/pages/Login";
+    import BrainPage from "@/pages/Brain"; // Importar BrainPage
+    import Changelog from "@/pages/Changelog";
+    import AcceptInvite from "@/pages/AcceptInvite";
+    import Provision from "@/pages/Provision";
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/accept-invite" element={<AcceptInvite />} />
-          <Route 
-            path="/" 
-            element={
-              <ProtectedRoute>
-                <AppLayout><KanbanBoard /></AppLayout>
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/brain" 
-            element={
-              <ProtectedRoute requireAdmin>
-                <AppLayout><Brain /></AppLayout>
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/brain/new" 
-            element={
-              <ProtectedRoute requireAdmin>
-                <AppLayout><BrainNew /></AppLayout>
-              </ProtectedRoute>
-            } 
-          />
-          <Route
-            path="/changelog"
-            element={
-              <ProtectedRoute>
-                <AppLayout><Changelog /></AppLayout>
-              </ProtectedRoute>
-            }
-          />
-          {/* Rota pública para provisionamento manual */}
-          <Route path="/provision" element={<ProvisionWrapper />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+    const queryClient = new QueryClient();
 
-export default App;
+    function App() {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+            <WorkspaceProvider> {/* Envolver a aplicação com WorkspaceProvider */}
+              <BrowserRouter>
+                <Toaster />
+                <Routes>
+                  <Route path="/auth" element={<Login />} />
+                  <Route path="/accept-invite" element={<AcceptInvite />} />
+                  <Route path="/provision" element={<Provision />} />
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Index />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/brain"
+                    element={
+                      <ProtectedRoute requireAdmin>
+                        <AppLayout>
+                          <BrainPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/changelog"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Changelog />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </BrowserRouter>
+            </WorkspaceProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      );
+    }
+
+    export default App;
