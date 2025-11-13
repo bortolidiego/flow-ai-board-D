@@ -5,8 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Brain as BrainIcon, Zap, Settings, Bot, Target } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Loader2, Brain as BrainIcon, Zap, Settings, Bot, Target, MessageSquare } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { AIPromptBuilder } from '@/components/AIPromptBuilder';
 import { FunnelTypesManager } from '@/components/FunnelTypesManager';
@@ -14,10 +13,11 @@ import { CustomFieldsManager } from '@/components/CustomFieldsManager';
 import { InactivityRulesManager } from '@/components/InactivityRulesManager';
 import { MovementRulesManager } from '@/components/MovementRulesManager';
 import { EvolutionSettings } from '@/components/EvolutionSettings';
+import { ChatwootSettings } from '@/components/ChatwootSettings';
 
 interface Pipeline {
   id: string;
-  name: string;
+  name?: string;
   workspace_id: string;
   created_at: string;
 }
@@ -35,12 +35,18 @@ export default function Brain() {
     try {
       const { data, error } = await supabase
         .from('pipelines')
-        .select('*')
+        .select('id, workspace_id, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      setPipelines(data || []);
+      // Transformar dados para incluir name baseado em outros campos
+      const pipelinesWithName = (data || []).map((pipeline, index) => ({
+        ...pipeline,
+        name: `Pipeline ${index + 1}`
+      }));
+
+      setPipelines(pipelinesWithName);
       if (data && data.length > 0 && !selectedPipeline) {
         setSelectedPipeline(data[0].id);
       }
@@ -98,7 +104,7 @@ export default function Brain() {
                 onClick={() => handlePipelineChange(pipeline.id)}
                 className="text-sm"
               >
-                {pipeline.name}
+                {pipeline.name || `Pipeline ${pipeline.id.slice(-4)}`}
               </Button>
             ))}
           </div>
@@ -107,12 +113,12 @@ export default function Brain() {
 
       {currentPipeline ? (
         <Tabs defaultValue="ai" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="ai">🤖 IA</TabsTrigger>
             <TabsTrigger value="funnels">🎯 Funis</TabsTrigger>
             <TabsTrigger value="fields">📝 Campos</TabsTrigger>
             <TabsTrigger value="rules">⚡ Regras</TabsTrigger>
-            <TabsTrigger value="evolution">📱 Evolution</TabsTrigger>
+            <TabsTrigger value="integrations">🔌 Integrações</TabsTrigger>
             <TabsTrigger value="advanced">🔧 Avançado</TabsTrigger>
           </TabsList>
 
@@ -152,44 +158,100 @@ export default function Brain() {
             </div>
           </TabsContent>
 
-          <TabsContent value="evolution" className="space-y-6">
+          <TabsContent value="integrations" className="space-y-6">
             <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-primary" />
-                    Evolution API Integration
-                  </CardTitle>
-                  <CardDescription>
-                    Conecte suas instâncias WhatsApp já sincronizadas para receber mensagens automaticamente
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                        <span>Mensagens em tempo real</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                        <span>Análise automática</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                        <span>Sem QR codes</span>
+              <div className="grid gap-4 md:grid-cols-3">
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-3">
+                      <Zap className="w-8 h-8 text-green-500" />
+                      <div>
+                        <h3 className="font-semibold">Evolution API</h3>
+                        <p className="text-sm text-muted-foreground">
+                          WhatsApp direto e confiável
+                        </p>
                       </div>
                     </div>
-                    
-                    <Link to={`/evolution/${selectedPipeline}`}>
-                      <Button className="w-full gap-2">
-                        <Zap className="w-4 h-4" />
-                        Configurar Evolution API
-                      </Button>
-                    </Link>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className="w-8 h-8 text-blue-500" />
+                      <div>
+                        <h3 className="font-semibold">Chatwoot</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Integração existente
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-3">
+                      <Bot className="w-8 h-8 text-purple-500" />
+                      <div>
+                        <h3 className="font-semibold">Análise Automática</h3>
+                        <p className="text-sm text-muted-foreground">
+                          IA analisa todas as mensagens
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Tabs defaultValue="evolution" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="evolution">🚀 Evolution API</TabsTrigger>
+                  <TabsTrigger value="chatwoot">💬 Chatwoot</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="evolution" className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <Zap className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+                        <div>
+                          <h4 className="font-semibold text-green-800 dark:text-green-200">
+                            Evolution API - Nova Geração
+                          </h4>
+                          <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                            Conecte suas instâncias WhatsApp já sincronizadas para receber mensagens automaticamente 
+                            com maior confiabilidade e dados mais ricos.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <EvolutionSettings pipelineId={selectedPipeline} />
                   </div>
-                </CardContent>
-              </Card>
+                </TabsContent>
+
+                <TabsContent value="chatwoot" className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <MessageSquare className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                        <div>
+                          <h4 className="font-semibold text-blue-800 dark:text-blue-200">
+                            Chatwoot - Integração Estabelecida
+                          </h4>
+                          <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                            Configure sua integração existente com Chatwoot para continuar receiving 
+                            conversas automaticamente no kanban.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <ChatwootSettings pipelineId={selectedPipeline} />
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           </TabsContent>
 

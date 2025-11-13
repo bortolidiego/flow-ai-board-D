@@ -8,12 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Copy, ExternalLink, Play, Pause, Clock } from 'lucide-react';
 import { IntegrationStatusBadge } from '@/components/IntegrationStatusBadge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
 interface ChatwootSettingsProps {
   pipelineId: string;
 }
-export const ChatwootSettings = ({
-  pipelineId
-}: ChatwootSettingsProps) => {
+
+export const ChatwootSettings = ({ pipelineId }: ChatwootSettingsProps) => {
   const [chatwootUrl, setChatwootUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [accountId, setAccountId] = useState('');
@@ -26,9 +26,11 @@ export const ChatwootSettings = ({
   const [lastSync, setLastSync] = useState<string | null>(null);
   const { toast } = useToast();
   const webhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chatwoot-webhook`;
+
   useEffect(() => {
     loadIntegration();
   }, [pipelineId]);
+
   const loadIntegration = async () => {
     const { data } = await supabase
       .from('chatwoot_integrations')
@@ -47,6 +49,7 @@ export const ChatwootSettings = ({
       setLastSync(data.updated_at);
     }
   };
+
   const handleSave = async () => {
     if (!chatwootUrl || !apiKey || !accountId) {
       toast({
@@ -59,9 +62,7 @@ export const ChatwootSettings = ({
     setLoading(true);
     try {
       if (hasIntegration) {
-        const {
-          error
-        } = await supabase.from('chatwoot_integrations').update({
+        const { error } = await supabase.from('chatwoot_integrations').update({
           chatwoot_url: chatwootUrl,
           chatwoot_api_key: apiKey,
           account_id: accountId,
@@ -70,9 +71,7 @@ export const ChatwootSettings = ({
         }).eq('id', integrationId);
         if (error) throw error;
       } else {
-        const {
-          error
-        } = await supabase.from('chatwoot_integrations').insert({
+        const { error } = await supabase.from('chatwoot_integrations').insert({
           pipeline_id: pipelineId,
           chatwoot_url: chatwootUrl,
           chatwoot_api_key: apiKey,
@@ -97,6 +96,7 @@ export const ChatwootSettings = ({
       setLoading(false);
     }
   };
+
   const copyWebhookUrl = () => {
     navigator.clipboard.writeText(webhookUrl);
     toast({

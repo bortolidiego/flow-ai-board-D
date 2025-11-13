@@ -9,7 +9,6 @@ import { Toaster } from '@/components/ui/toaster';
 import Index from '@/pages/Index';
 import Brain from '@/pages/Brain';
 import Changelog from '@/pages/Changelog';
-import EvolutionIntegration from '@/pages/EvolutionIntegration';
 import Provision from '@/pages/Provision';
 
 // Auth
@@ -34,16 +33,6 @@ function App() {
                     <Route path="/" element={<Index />} />
                     <Route path="/brain" element={<Brain />} />
                     <Route path="/changelog" element={<Changelog />} />
-                    
-                    {/* Evolution Integration */}
-                    <Route 
-                      path="/evolution/:pipelineId" 
-                      element={
-                        <ProtectedRoute requireAdmin>
-                          <EvolutionIntegration />
-                        </ProtectedRoute>
-                      } 
-                    />
                     
                     {/* Provision Route */}
                     <Route path="/provision" element={<Provision />} />

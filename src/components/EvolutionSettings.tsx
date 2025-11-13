@@ -70,7 +70,7 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
 
   const loadIntegrations = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('evolution_integrations')
         .select('*')
         .eq('pipeline_id', pipelineId)
@@ -88,7 +88,6 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
   const testConnection = async (integration: EvolutionIntegration) => {
     setTesting(integration.id);
     try {
-      // Testar status da instância
       const response = await fetch(`${integration.api_url}/instance/connectionState/${integration.instance_name}`, {
         headers: {
           'apikey': integration.api_key,
@@ -102,8 +101,7 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
 
       const data = await response.json();
       
-      // Atualizar status no banco
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('evolution_integrations')
         .update({
           status: data.instance?.state === 'open' ? 'connected' : 'disconnected',
@@ -114,7 +112,7 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
 
       if (error) throw error;
 
-      loadIntegrations(); // Recarregar lista
+      loadIntegrations();
     } catch (error: any) {
       console.error('Error testing connection:', error);
     } finally {
@@ -129,7 +127,6 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
 
     setSaving(true);
     try {
-      // Configurar webhook na Evolution primeiro
       const webhookConfig = {
         url: `${webhookUrl}/${pipelineId}`,
         events: ['messages.upsert', 'connection.update', 'messages.update']
@@ -149,8 +146,7 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
         throw new Error(`Falha ao configurar webhook: ${error}`);
       }
 
-      // Salvar no banco de dados
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('evolution_integrations')
         .insert({
           pipeline_id: pipelineId,
@@ -170,10 +166,8 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
 
       if (error) throw error;
 
-      // Testar conexão imediatamente
       await testConnection(data);
 
-      // Limpar formulário
       setNewIntegration({
         instance_name: '',
         instance_alias: '',
@@ -194,7 +188,6 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
 
   const deleteIntegration = async (integrationId: string) => {
     try {
-      // Remover webhook da Evolution primeiro
       const integration = integrations.find(i => i.id === integrationId);
       if (integration) {
         await fetch(`${integration.api_url}/webhook/delete/${integration.instance_name}`, {
@@ -205,8 +198,7 @@ export function EvolutionSettings({ pipelineId }: EvolutionSettingsProps) {
         });
       }
 
-      // Remover do banco
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('evolution_integrations')
         .delete()
         .eq('id', integrationId);
