@@ -1,7 +1,5 @@
-/// <reference lib="deno" />
-
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,7 +14,7 @@ serve(async (req) => {
   try {
     const url = new URL(req.url)
     const pathSegments = url.pathname.split('/').filter(Boolean)
-    const pipelineId = pathSegments[pathSegments.length - 1] // Último segmento
+    const pipelineId = pathSegments[pathSegments.length - 1]
 
     if (!pipelineId) {
       throw new Error('Pipeline ID não fornecido na URL')
@@ -32,7 +30,6 @@ serve(async (req) => {
 
     console.log('Received Evolution webhook:', { pipelineId, instance, event })
 
-    // Processar diferentes tipos de eventos
     switch (event) {
       case 'connection.update':
         await handleConnectionUpdate(supabase, instance, data, pipelineId)
@@ -66,7 +63,7 @@ serve(async (req) => {
   }
 })
 
-async function handleConnectionUpdate(supabase: any, instance: string, data: any, pipelineId: string) {
+async function handleConnectionUpdate(supabase, instance, data, pipelineId) {
   try {
     const { error } = await supabase
       .from('evolution_integrations')
@@ -88,7 +85,7 @@ async function handleConnectionUpdate(supabase: any, instance: string, data: any
   }
 }
 
-async function handleMessageUpsert(supabase: any, instance: string, data: any, pipelineId: string) {
+async function handleMessageUpsert(supabase, instance, data, pipelineId) {
   try {
     const { data: integration, error: integrationError } = await supabase
       .from('evolution_integrations')
@@ -106,13 +103,11 @@ async function handleMessageUpsert(supabase: any, instance: string, data: any, p
     const message = data.message
     const chat = data.chat
 
-    // Se auto_create_cards está desabilitado, apenas atualizar existente
     if (!integration.auto_create_cards) {
       await updateExistingCard(supabase, chat, message, integration)
       return
     }
 
-    // Verificar se já existe um card para esta conversa
     const { data: existingCard } = await supabase
       .from('cards')
       .select('id')
@@ -120,10 +115,8 @@ async function handleMessageUpsert(supabase: any, instance: string, data: any, p
       .maybeSingle()
 
     if (existingCard) {
-      // Atualizar card existente
       await updateExistingCard(supabase, chat, message, integration)
     } else {
-      // Criar novo card
       await createNewCard(supabase, chat, message, integration, data)
     }
 
@@ -132,21 +125,18 @@ async function handleMessageUpsert(supabase: any, instance: string, data: any, p
   }
 }
 
-async function handleMessageUpdate(supabase: any, instance: string, data: any, pipelineId: string) {
+async function handleMessageUpdate(supabase, instance, data, pipelineId) {
   try {
     const message = data.message
     const chat = data.chat
-
-    // Atualizar card existente com nova mensagem
     await updateExistingCard(supabase, chat, message, null, true)
   } catch (error) {
     console.error('Error in handleMessageUpdate:', error)
   }
 }
 
-async function createNewCard(supabase: any, chat: any, message: any, integration: any, fullData: any) {
+async function createNewCard(supabase, chat, message, integration, fullData) {
   try {
-    // Buscar primeira coluna da pipeline
     const { data: columns } = await supabase
       .from('columns')
       .select('id')
@@ -188,12 +178,11 @@ async function createNewCard(supabase: any, chat: any, message: any, integration
 
     console.log('Card created:', card.id)
 
-    // Criar entrada na tabela de lead_data
     if (message.pushName || chat.name) {
       const leadData = {
         card_id: card.id,
         full_name: message.pushName || chat.name,
-        phone: chat.id.split('@')[0] // Extrair número do JID
+        phone: chat.id.split('@')[0]
       }
 
       await supabase
@@ -201,7 +190,6 @@ async function createNewCard(supabase: any, chat: any, message: any, integration
         .insert(leadData)
     }
 
-    // Disparar análise com IA se habilitado
     if (integration.analyze_messages && card.id) {
       try {
         await supabase.functions.invoke('analyze-conversation', {
@@ -218,7 +206,7 @@ async function createNewCard(supabase: any, chat: any, message: any, integration
   }
 }
 
-async function updateExistingCard(supabase: any, chat: any, message: any, integration: any = null, isUpdate: boolean = false) {
+async function updateExistingCard(supabase, chat, message, integration = null, isUpdate = false) {
   try {
     const { data: existingCard } = await supabase
       .from('cards')
@@ -231,7 +219,6 @@ async function updateExistingCard(supabase: any, chat: any, message: any, integr
       return
     }
 
-    // Construir nova descrição da conversa
     const timestamp = new Date().toLocaleTimeString('pt-BR')
     const senderName = message.pushName || 'WhatsApp'
     const newMessageLine = `[${timestamp}] ${senderName}: ${message.body}`
@@ -255,7 +242,6 @@ async function updateExistingCard(supabase: any, chat: any, message: any, integr
     } else {
       console.log('Card updated:', existingCard.id)
       
-      // Disparar análise com IA se habilitado
       if (integration?.analyze_messages) {
         try {
           await supabase.functions.invoke('analyze-conversation', {
