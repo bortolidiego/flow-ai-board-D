@@ -70,7 +70,7 @@ export default function BrainPage() {
         setLoadingPipeline(false);
       }
     }
-  }, [workspace, workspaceLoading]);
+  }, [workspace, workspaceLoading, fetchWorkspace]); // Adicionar fetchWorkspace como dependência
 
   const fetchPipelineData = async (currentPipelineId: string) => {
     setLoadingPipeline(true);
@@ -143,7 +143,7 @@ export default function BrainPage() {
 
       // Set as active pipeline for the workspace
       await supabase
-        .from('workspaces')
+        ..from('workspaces')
         .update({ active_pipeline_id: pipelineData.id })
         .eq('id', workspace.id);
 
