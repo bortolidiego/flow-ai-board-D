@@ -143,7 +143,7 @@ export default function BrainPage() {
 
       // Set as active pipeline for the workspace
       await supabase
-        ..from('workspaces')
+        .from('workspaces') // Corrigido de ..from para .from
         .update({ active_pipeline_id: pipelineData.id })
         .eq('id', workspace.id);
 
