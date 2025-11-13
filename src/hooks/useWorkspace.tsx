@@ -41,21 +41,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         .from('workspace_members')
         .select('workspace_id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle(); // Usar maybeSingle para evitar erro se não houver membro
 
-      if (memberError) {
-        if (memberError.code === 'PGRST116') { // No rows found
-          setWorkspace(null);
-          setLoading(false);
-          return;
-        }
-        throw memberError;
+      if (memberError) throw memberError;
+
+      if (!memberData) {
+        setWorkspace(null);
+        setLoading(false);
+        return;
       }
 
       // Fetch the actual workspace details
       const { data: workspaceData, error: workspaceError } = await supabase
         .from('workspaces')
-        .select('*')
+        .select('id, name, created_at, updated_at, active_pipeline_id') // Selecionar explicitamente active_pipeline_id
         .eq('id', memberData.workspace_id)
         .single();
 
@@ -84,7 +83,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const { error: updateError } = await supabase
         .from('workspaces')
-        .update(updates as Partial<Workspace>)
+        .update(updates)
         .eq('id', workspace.id);
 
       if (updateError) throw updateError;
