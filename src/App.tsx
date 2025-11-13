@@ -1,71 +1,63 @@
-import React from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AppLayout } from "./components/AppLayout";
-import { ProtectedRoute } from "./components/ProtectedRoute";
-import KanbanBoard from "./pages/KanbanBoard";
-import Brain from "./pages/Brain";
-import BrainNew from "./pages/BrainNew";
-import Auth from "./pages/Auth";
-import AcceptInvite from "./pages/AcceptInvite";
-import Changelog from "./pages/Changelog";
-import NotFound from "./pages/NotFound";
-import ProvisionWrapper from "@/components/ProvisionWrapper";
+"use client";
 
-const queryClient = new QueryClient();
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { AppLayout } from '@/components/AppLayout';
+import { Toaster } from '@/components/ui/toaster';
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
+// Pages
+import Index from '@/pages/Index';
+import Brain from '@/pages/Brain';
+import Changelog from '@/pages/Changelog';
+import EvolutionIntegration from '@/pages/EvolutionIntegration';
+import Provision from '@/pages/Provision';
+
+// Auth
+import Auth from '@/pages/Auth';
+
+function App() {
+  return (
+    <Router>
+      <div className="min-h-screen bg-background">
         <Routes>
+          {/* Auth Route */}
           <Route path="/auth" element={<Auth />} />
-          <Route path="/accept-invite" element={<AcceptInvite />} />
-          <Route 
-            path="/" 
-            element={
-              <ProtectedRoute>
-                <AppLayout><KanbanBoard /></AppLayout>
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/brain" 
-            element={
-              <ProtectedRoute requireAdmin>
-                <AppLayout><Brain /></AppLayout>
-              </ProtectedRoute>
-            } 
-          />
-          <Route 
-            path="/brain/new" 
-            element={
-              <ProtectedRoute requireAdmin>
-                <AppLayout><BrainNew /></AppLayout>
-              </ProtectedRoute>
-            } 
-          />
+          
+          {/* Protected Routes */}
           <Route
-            path="/changelog"
+            path="/*"
             element={
               <ProtectedRoute>
-                <AppLayout><Changelog /></AppLayout>
+                <AppLayout>
+                  <Routes>
+                    {/* Main Routes */}
+                    <Route path="/" element={<Index />} />
+                    <Route path="/brain" element={<Brain />} />
+                    <Route path="/changelog" element={<Changelog />} />
+                    
+                    {/* Evolution Integration */}
+                    <Route 
+                      path="/evolution/:pipelineId" 
+                      element={
+                        <ProtectedRoute requireAdmin>
+                          <EvolutionIntegration />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    
+                    {/* Provision Route */}
+                    <Route path="/provision" element={<Provision />} />
+                  </Routes>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
-          {/* Rota pública para provisionamento manual */}
-          <Route path="/provision" element={<ProvisionWrapper />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
         </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+        
+        <Toaster />
+      </div>
+    </Router>
+  );
+}
 
 export default App;
