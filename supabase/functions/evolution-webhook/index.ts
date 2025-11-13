@@ -1,3 +1,5 @@
+/// <reference lib="deno" />
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
@@ -6,76 +8,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface EvolutionWebhookPayload {
-  event: string;
-  data: any;
-  instance: string;
-}
-
-interface ProcessedMessage {
-  id: string;
-  from: string;
-  message: string;
-  timestamp: number;
-  pushName?: string;
-  fromMe: boolean;
-  messageType: string;
-  instance: string;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
-
+  
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
     const url = new URL(req.url)
-    const pipelineId = url.pathname.split('/').pop()
+    const pathSegments = url.pathname.split('/').filter(Boolean)
+    const pipelineId = pathSegments[pathSegments.length - 1] // Último segmento
 
     if (!pipelineId) {
       throw new Error('Pipeline ID não fornecido na URL')
     }
 
-    const payload: EvolutionWebhookPayload = await req.json()
-    console.log('Evolution webhook received:', { event: payload.event, pipelineId })
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    // Buscar integração ativa para este pipeline
-    const { data: integration, error: integrationError } = await supabase
-      .from('evolution_integrations')
-      .select('*')
-      .eq('pipeline_id', pipelineId)
-      .eq('instance_name', payload.instance)
-      .eq('status', 'connected')
-      .single()
+    const body = await req.json()
+    const { instance, event, data } = body
 
-    if (integrationError || !integration) {
-      console.log('No active integration found for pipeline:', pipelineId)
-      return new Response(JSON.stringify({ success: true, message: 'No integration configured' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    console.log('Received Evolution webhook:', { pipelineId, instance, event })
 
     // Processar diferentes tipos de eventos
-    switch (payload.event) {
+    switch (event) {
+      case 'connection.update':
+        await handleConnectionUpdate(supabase, instance, data, pipelineId)
+        break
+      
       case 'messages.upsert':
-        await handleMessageUpsert(supabase, integration, payload.data)
+        await handleMessageUpsert(supabase, instance, data, pipelineId)
         break
       
       case 'messages.update':
-        await handleMessageUpdate(supabase, integration, payload.data)
-        break
-      
-      case 'connection.update':
-        await handleConnectionUpdate(supabase, integration, payload.data)
+        await handleMessageUpdate(supabase, instance, data, pipelineId)
         break
       
       default:
-        console.log('Unhandled event type:', payload.event)
+        console.log(`Evento não processado: ${event}`)
     }
 
     return new Response(JSON.stringify({ success: true }), {
@@ -83,222 +55,220 @@ serve(async (req) => {
     })
 
   } catch (error) {
-    console.error('Evolution webhook error:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('Error processing Evolution webhook:', error)
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error',
+      message: error.message 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
 })
 
-async function handleMessageUpsert(supabase: any, integration: any, data: any) {
-  if (!data.message || data.key?.fromMe) {
-    return // Ignorar mensagens do próprio bot ou sem conteúdo
-  }
-
-  const processedMessage = processEvolutionMessage(data, integration.instance_name)
-  if (!processedMessage) return
-
-  console.log('Processing message:', processedMessage.id)
-
-  // Buscar ou criar coluna padrão para mensagens
-  const { data: columns } = await supabase
-    .from('columns')
-    .select('id, name')
-    .eq('pipeline_id', integration.pipeline_id)
-    .eq('name', 'Mensagens Recebidas')
-    .limit(1)
-
-  let columnId = columns?.[0]?.id
-
-  // Se não existe, criar coluna padrão
-  if (!columnId) {
-    const { data: newColumn } = await supabase
-      .from('columns')
-      .insert({
-        pipeline_id: integration.pipeline_id,
-        name: 'Mensagens Recebidas',
-        position: 0
-      })
-      .select('id')
-      .single()
-
-    columnId = newColumn?.id
-  }
-
-  if (!columnId) {
-    throw new Error('Could not find or create column for messages')
-  }
-
-  // Buscar card existente para este contato
-  const { data: existingCard } = await supabase
-    .from('cards')
-    .select('id')
-    .eq('chatwoot_contact_name', processedMessage.pushName || 'Contato WhatsApp')
-    .eq('column_id', columnId)
-    .eq('pipeline_id', integration.pipeline_id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-
-  let cardId: string
-
-  if (existingCard && existingCard.length > 0 && !integration.auto_create_cards) {
-    // Atualizar card existente
-    cardId = existingCard[0].id
-
-    const { error: updateError } = await supabase
-      .from('cards')
+async function handleConnectionUpdate(supabase: any, instance: string, data: any, pipelineId: string) {
+  try {
+    const { error } = await supabase
+      .from('evolution_integrations')
       .update({
-        description: `${processedMessage.message}\n\n---\nÚltima mensagem: ${new Date(processedMessage.timestamp * 1000).toLocaleString('pt-BR')}`,
-        updated_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString()
+        status: data.state === 'open' ? 'connected' : 'disconnected',
+        last_connection: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
-      .eq('id', cardId)
+      .eq('instance_name', instance)
+      .eq('pipeline_id', pipelineId)
 
-    if (updateError) {
-      console.error('Error updating card:', updateError)
+    if (error) {
+      console.error('Error updating connection status:', error)
+    } else {
+      console.log('Connection status updated:', instance, data.state)
     }
+  } catch (error) {
+    console.error('Error in handleConnectionUpdate:', error)
+  }
+}
 
-  } else if (integration.auto_create_cards) {
-    // Criar novo card
-    const { data: newCard, error: createError } = await supabase
-      .from('cards')
-      .insert({
-        pipeline_id: integration.pipeline_id,
-        column_id: columnId,
-        title: processedMessage.pushName || 'Contato WhatsApp',
-        description: processedMessage.message,
-        position: 0,
-        chatwoot_contact_name: processedMessage.pushName || 'Contato WhatsApp',
-        chatwoot_conversation_id: processedMessage.id,
-        inbox_name: `Evolution - ${integration.instance_alias}`,
-        last_activity_at: new Date().toISOString()
-      })
-      .select('id')
+async function handleMessageUpsert(supabase: any, instance: string, data: any, pipelineId: string) {
+  try {
+    const { data: integration, error: integrationError } = await supabase
+      .from('evolution_integrations')
+      .select('*')
+      .eq('instance_name', instance)
+      .eq('pipeline_id', pipelineId)
+      .eq('active', true)
       .single()
 
-    if (createError) {
-      console.error('Error creating card:', createError)
+    if (integrationError || !integration) {
+      console.log('Integration not found or inactive:', instance)
       return
     }
 
-    cardId = newCard.id
+    const message = data.message
+    const chat = data.chat
 
-    // Criar entrada na lead_data se não existir
-    if (processedMessage.pushName) {
-      const { error: leadDataError } = await supabase
+    // Se auto_create_cards está desabilitado, apenas atualizar existente
+    if (!integration.auto_create_cards) {
+      await updateExistingCard(supabase, chat, message, integration)
+      return
+    }
+
+    // Verificar se já existe um card para esta conversa
+    const { data: existingCard } = await supabase
+      .from('cards')
+      .select('id')
+      .eq('chatwoot_conversation_id', chat.id)
+      .maybeSingle()
+
+    if (existingCard) {
+      // Atualizar card existente
+      await updateExistingCard(supabase, chat, message, integration)
+    } else {
+      // Criar novo card
+      await createNewCard(supabase, chat, message, integration, data)
+    }
+
+  } catch (error) {
+    console.error('Error in handleMessageUpsert:', error)
+  }
+}
+
+async function handleMessageUpdate(supabase: any, instance: string, data: any, pipelineId: string) {
+  try {
+    const message = data.message
+    const chat = data.chat
+
+    // Atualizar card existente com nova mensagem
+    await updateExistingCard(supabase, chat, message, null, true)
+  } catch (error) {
+    console.error('Error in handleMessageUpdate:', error)
+  }
+}
+
+async function createNewCard(supabase: any, chat: any, message: any, integration: any, fullData: any) {
+  try {
+    // Buscar primeira coluna da pipeline
+    const { data: columns } = await supabase
+      .from('columns')
+      .select('id')
+      .eq('pipeline_id', integration.pipeline_id)
+      .order('position')
+      .limit(1)
+
+    if (!columns || columns.length === 0) {
+      console.log('No columns found for pipeline:', integration.pipeline_id)
+      return
+    }
+
+    const title = message.pushName || chat.name || `Conversa ${chat.id}`
+    const description = `[${new Date().toLocaleTimeString('pt-BR')}] ${message.pushName || 'WhatsApp'}: ${message.body}`
+
+    const cardData = {
+      title,
+      description,
+      column_id: columns[0].id,
+      chatwoot_contact_name: message.pushName || chat.name || null,
+      chatwoot_conversation_id: chat.id,
+      chatwoot_agent_name: null,
+      inbox_name: integration.instance_alias || integration.instance_name,
+      conversation_status: chat.archive || 'open',
+      last_activity_at: new Date().toISOString(),
+      ai_suggested: integration.analyze_messages
+    }
+
+    const { data: card, error: cardError } = await supabase
+      .from('cards')
+      .insert(cardData)
+      .select()
+      .single()
+
+    if (cardError) {
+      console.error('Error creating card:', cardError)
+      return
+    }
+
+    console.log('Card created:', card.id)
+
+    // Criar entrada na tabela de lead_data
+    if (message.pushName || chat.name) {
+      const leadData = {
+        card_id: card.id,
+        full_name: message.pushName || chat.name,
+        phone: chat.id.split('@')[0] // Extrair número do JID
+      }
+
+      await supabase
         .from('lead_data')
-        .insert({
-          card_id: cardId,
-          full_name: processedMessage.pushName,
-          phone: formatPhoneNumber(processedMessage.from)
+        .insert(leadData)
+    }
+
+    // Disparar análise com IA se habilitado
+    if (integration.analyze_messages && card.id) {
+      try {
+        await supabase.functions.invoke('analyze-conversation', {
+          body: { cardId: card.id }
         })
-
-      if (leadDataError) {
-        console.error('Error creating lead data:', leadDataError)
+        console.log('AI analysis triggered for card:', card.id)
+      } catch (analysisError) {
+        console.error('Error triggering AI analysis:', analysisError)
       }
     }
 
-  } else {
-    console.log('Card creation disabled, skipping...')
-    return
+  } catch (error) {
+    console.error('Error in createNewCard:', error)
   }
+}
 
-  // Disparar análise se configurada
-  if (integration.analyze_messages && cardId) {
-    try {
-      await supabase.functions.invoke('analyze-conversation', {
-        body: { cardId }
+async function updateExistingCard(supabase: any, chat: any, message: any, integration: any = null, isUpdate: boolean = false) {
+  try {
+    const { data: existingCard } = await supabase
+      .from('cards')
+      .select('id, description, last_activity_at')
+      .eq('chatwoot_conversation_id', chat.id)
+      .single()
+
+    if (!existingCard) {
+      console.log('Card not found for conversation:', chat.id)
+      return
+    }
+
+    // Construir nova descrição da conversa
+    const timestamp = new Date().toLocaleTimeString('pt-BR')
+    const senderName = message.pushName || 'WhatsApp'
+    const newMessageLine = `[${timestamp}] ${senderName}: ${message.body}`
+    
+    const newDescription = isUpdate 
+      ? `${existingCard.description}\n${newMessageLine}`
+      : `${existingCard.description}\n${newMessageLine}`
+
+    const { error } = await supabase
+      .from('cards')
+      .update({
+        description: newDescription,
+        last_activity_at: new Date().toISOString(),
+        conversation_status: chat.archive || 'open',
+        ai_suggested: integration?.analyze_messages || false
       })
-    } catch (error) {
-      console.error('Error triggering analysis:', error)
-    }
-  }
-}
+      .eq('id', existingCard.id)
 
-async function handleMessageUpdate(supabase: any, integration: any, data: any) {
-  // Atualizar timestamp de última atividade
-  const { error } = await supabase
-    .from('cards')
-    .update({
-      updated_at: new Date().toISOString(),
-      last_activity_at: new Date().toISOString()
-    })
-    .eq('chatwoot_conversation_id', data.key?.id)
-
-  if (error) {
-    console.error('Error updating card timestamp:', error)
-  }
-}
-
-async function handleConnectionUpdate(supabase: any, integration: any, data: any) {
-  // Atualizar status da conexão
-  const newStatus = data.state === 'open' ? 'connected' : 'disconnected'
-  
-  const { error } = await supabase
-    .from('evolution_integrations')
-    .update({
-      status: newStatus,
-      last_connection: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', integration.id)
-
-  if (error) {
-    console.error('Error updating connection status:', error)
-  }
-}
-
-function processEvolutionMessage(data: any, instanceName: string): ProcessedMessage | null {
-  if (!data.key?.remoteJid || !data.message) {
-    return null
-  }
-
-  // Extrair texto da mensagem
-  let messageText = ''
-  let messageType = 'conversation'
-
-  if (data.message.conversation) {
-    messageText = data.message.conversation
-    messageType = 'conversation'
-  } else if (data.message.extendedTextMessage?.text) {
-    messageText = data.message.extendedTextMessage.text
-    messageType = 'extendedText'
-  } else if (data.message.imageMessage?.caption) {
-    messageText = data.message.imageMessage.caption
-    messageType = 'image'
-  } else if (data.message.documentMessage?.caption) {
-    messageText = data.message.documentMessage.caption
-    messageType = 'document'
-  } else {
-    // Para outros tipos, extrair o que for possível
-    const keys = Object.keys(data.message)
-    for (const key of keys) {
-      if (data.message[key]?.caption || data.message[key]?.text) {
-        messageText = data.message[key].caption || data.message[key].text
-        messageType = key.replace('Message', '').toLowerCase()
-        break
+    if (error) {
+      console.error('Error updating card:', error)
+    } else {
+      console.log('Card updated:', existingCard.id)
+      
+      // Disparar análise com IA se habilitado
+      if (integration?.analyze_messages) {
+        try {
+          await supabase.functions.invoke('analyze-conversation', {
+            body: { cardId: existingCard.id }
+          })
+          console.log('AI analysis triggered for updated card:', existingCard.id)
+        } catch (analysisError) {
+          console.error('Error triggering AI analysis:', analysisError)
+        }
       }
     }
-  }
 
-  if (!messageText.trim()) {
-    return null
+  } catch (error) {
+    console.error('Error in updateExistingCard:', error)
   }
-
-  return {
-    id: data.key.id,
-    from: data.key.remoteJid,
-    message: messageText,
-    timestamp: data.messageTimestamp || Math.floor(Date.now() / 1000),
-    pushName: data.pushName,
-    fromMe: data.key.fromMe || false,
-    messageType,
-    instance: instanceName
-  }
-}
-
-function formatPhoneNumber(jid: string): string {
-  // Converter jid para formato de telefone
-  return jid.split('@')[0]
 }
