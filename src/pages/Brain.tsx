@@ -14,7 +14,7 @@ export default function BrainPage() {
     );
   }
 
-  if (!workspace || !workspace.active_pipeline_id) { // Adicionada verificação para active_pipeline_id
+  if (!workspace || !workspace.active_pipeline_id) { // Verificação explícita
     return (
       <div className="p-6">
         <Card>

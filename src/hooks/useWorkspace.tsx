@@ -5,7 +5,7 @@ import { useToast } from './use-toast';
 interface Workspace {
   id: string;
   name: string;
-  active_pipeline_id?: string; // Tornar opcional inicialmente
+  active_pipeline_id: string | null; // Pode ser string ou null
 }
 
 interface WorkspaceContextType {
@@ -44,9 +44,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         .from('workspace_members')
         .select('workspace_id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (memberError && memberError.code !== 'PGRST116') throw memberError; // PGRST116 means no rows found
+      if (memberError) throw memberError;
 
       if (!memberData) {
         setWorkspace(null);
@@ -56,13 +56,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       const { data: workspaceData, error: workspaceError } = await supabase
         .from('workspaces')
-        .select('*')
+        .select('id, name, active_pipeline_id') // Selecionar explicitamente active_pipeline_id
         .eq('id', memberData.workspace_id)
         .single();
 
       if (workspaceError) throw workspaceError;
 
-      // Atribuir active_pipeline_id após a busca, se existir
       setWorkspace(workspaceData as Workspace);
     } catch (err: any) {
       console.error('Error fetching workspace:', err);
@@ -86,7 +85,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const { data: newWorkspace, error: workspaceError } = await supabase
         .from('workspaces')
         .insert({ name })
-        .select()
+        .select('id, name, active_pipeline_id') // Selecionar explicitamente active_pipeline_id
         .single();
 
       if (workspaceError) throw workspaceError;
