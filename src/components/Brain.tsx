@@ -26,6 +26,7 @@ export default function Brain() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipeline, setSelectedPipeline] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [integrationTab, setIntegrationTab] = useState<'evolution' | 'chatwoot'>('evolution');
 
   useEffect(() => {
     loadPipelines();
@@ -113,7 +114,7 @@ export default function Brain() {
 
       {currentPipeline ? (
         <Tabs defaultValue="ai" className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="ai">🤖 IA</TabsTrigger>
             <TabsTrigger value="funnels">🎯 Funis</TabsTrigger>
             <TabsTrigger value="fields">📝 Campos</TabsTrigger>
@@ -159,7 +160,8 @@ export default function Brain() {
           </TabsContent>
 
           <TabsContent value="integrations" className="space-y-6">
-            <div className="space-y-4">
+            <div className="space-y-6">
+              {/* Cards informativos */}
               <div className="grid gap-4 md:grid-cols-3">
                 <Card>
                   <CardContent className="p-6">
@@ -204,54 +206,68 @@ export default function Brain() {
                 </Card>
               </div>
 
-              <Tabs defaultValue="evolution" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="evolution">🚀 Evolution API</TabsTrigger>
-                  <TabsTrigger value="chatwoot">💬 Chatwoot</TabsTrigger>
-                </TabsList>
+              {/* Seletor de integração */}
+              <div className="flex gap-2">
+                <Button
+                  variant={integrationTab === 'evolution' ? 'default' : 'outline'}
+                  onClick={() => setIntegrationTab('evolution')}
+                  className="gap-2"
+                >
+                  <Zap className="w-4 h-4" />
+                  Evolution API
+                </Button>
+                <Button
+                  variant={integrationTab === 'chatwoot' ? 'default' : 'outline'}
+                  onClick={() => setIntegrationTab('chatwoot')}
+                  className="gap-2"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Chatwoot
+                </Button>
+              </div>
 
-                <TabsContent value="evolution" className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-4">
-                      <div className="flex items-start gap-3">
-                        <Zap className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-green-800 dark:text-green-200">
-                            Evolution API - Nova Geração
-                          </h4>
-                          <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                            Conecte suas instâncias WhatsApp já sincronizadas para receber mensagens automaticamente 
-                            com maior confiabilidade e dados mais ricos.
-                          </p>
-                        </div>
+              {/* Conteúdo das integrações */}
+              {integrationTab === 'evolution' && (
+                <div className="space-y-4">
+                  <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <Zap className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+                      <div>
+                        <h4 className="font-semibold text-green-800 dark:text-green-200">
+                          Evolution API - Nova Geração
+                        </h4>
+                        <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+                          Conecte suas instâncias WhatsApp já sincronizadas para receber mensagens automaticamente 
+                          com maior confiabilidade e dados mais ricos.
+                        </p>
                       </div>
                     </div>
-
-                    <EvolutionSettings pipelineId={selectedPipeline} />
                   </div>
-                </TabsContent>
 
-                <TabsContent value="chatwoot" className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
-                      <div className="flex items-start gap-3">
-                        <MessageSquare className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-blue-800 dark:text-blue-200">
-                            Chatwoot - Integração Estabelecida
-                          </h4>
-                          <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                            Configure sua integração existente com Chatwoot para continuar receiving 
-                            conversas automaticamente no kanban.
-                          </p>
-                        </div>
+                  <EvolutionSettings pipelineId={selectedPipeline} />
+                </div>
+              )}
+
+              {integrationTab === 'chatwoot' && (
+                <div className="space-y-4">
+                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <MessageSquare className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                      <div>
+                        <h4 className="font-semibold text-blue-800 dark:text-blue-200">
+                          Chatwoot - Integração Estabelecida
+                        </h4>
+                        <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                          Configure sua integração existente com Chatwoot para continuar receiving 
+                          conversas automaticamente no kanban.
+                        </p>
                       </div>
                     </div>
-
-                    <ChatwootSettings pipelineId={selectedPipeline} />
                   </div>
-                </TabsContent>
-              </Tabs>
+
+                  <ChatwootSettings pipelineId={selectedPipeline} />
+                </div>
+              )}
             </div>
           </TabsContent>
 
