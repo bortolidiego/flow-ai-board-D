@@ -12,6 +12,7 @@ import { FunnelTypesManager } from '@/components/FunnelTypesManager';
 import { CustomFieldsManager } from '@/components/CustomFieldsManager';
 import { InactivityRulesManager } from '@/components/InactivityRulesManager';
 import { MovementRulesManager } from '@/components/MovementRulesManager';
+// Importando EvolutionSettings
 import { EvolutionSettings } from '@/components/EvolutionSettings';
 import { ChatwootSettings } from '@/components/ChatwootSettings';
 
@@ -41,7 +42,6 @@ export default function Brain() {
 
       if (error) throw error;
 
-      // Transformar dados para incluir name baseado em outros campos
       const pipelinesWithName = (data || []).map((pipeline, index) => ({
         ...pipeline,
         name: `Pipeline ${index + 1}`
@@ -71,6 +71,10 @@ export default function Brain() {
   }
 
   const currentPipeline = pipelines.find(p => p.id === selectedPipeline);
+
+  // Debug: Log para verificar se o componente foi importado corretamente
+  console.log('EvolutionSettings component:', EvolutionSettings);
+  console.log('IntegrationTab:', integrationTab);
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -126,7 +130,7 @@ export default function Brain() {
           <TabsContent value="ai" className="space-y-6">
             <AIPromptBuilder
               pipelineId={selectedPipeline}
-              customFields={[]} // Será carregado pelo componente
+              customFields={[]}
               onUpdate={() => loadPipelines()}
             />
           </TabsContent>
@@ -244,7 +248,14 @@ export default function Brain() {
                     </div>
                   </div>
 
-                  <EvolutionSettings pipelineId={selectedPipeline} />
+                  {/* COMPOENTE EVOLUTION SETTINGS */}
+                  <div className="p-4 border border-primary/30 rounded-lg bg-primary/5">
+                    <h5 className="font-semibold mb-2">🔧 Debug - EvolutionSettings</h5>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Se você estiver vendo esta mensagem, o componente EvolutionSettings está sendo renderizado.
+                    </p>
+                    <EvolutionSettings pipelineId={selectedPipeline} />
+                  </div>
                 </div>
               )}
 
