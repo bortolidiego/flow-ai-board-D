@@ -63,7 +63,7 @@ export const EvolutionSettings = ({
       .eq('pipeline_id', pipelineId)
       .maybeSingle();
 
-    if (data && typeof data === 'object' && 'id' in data) {
+    if (data && typeof data === 'object' && 'id' in data && data.id) {
       const integration = data as unknown as EvolutionIntegration;
       setHasIntegration(true);
       setIntegrationId(integration.id);
@@ -432,8 +432,8 @@ export const EvolutionSettings = ({
               Pausar Sincronia
             </AlertDialogAction>
           </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+          </AlertDialogContent>
+        </AlertDialog>
     </div>
   );
 };
