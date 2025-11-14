@@ -125,7 +125,23 @@ export default function KanbanBoard() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <KanbanFilters
-        filters={{}}
+        filters={{
+          search: '',
+          priority: [],
+          assignee: [],
+          funnelType: [],
+          lifecycleStages: [],
+          progressRange: null,
+          isMonetaryLocked: null,
+          isUnassigned: null,
+          valueRange: null,
+          productItem: [],
+          inactivityDays: null,
+          isReturningCustomer: null,
+          inboxName: [],
+          resolutionStatus: [],
+          dateRange: null,
+        }}
         sortBy="createdAt-desc"
         setSortBy={() => {}}
         updateFilter={() => {}}
