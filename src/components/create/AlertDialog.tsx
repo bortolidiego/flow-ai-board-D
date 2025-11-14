@@ -1,0 +1,5 @@
+import React from 'react'; import { Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material'; import CssBaseline from '@mui/material/CssBaseline'; const AlertDialog = ({ title, content, actions, onClose }) => { return ( <div className="fixed top-0 left-0 h-full w-full flex items-center justify-center bg-gray-200 bg-opacity-80" tabIndex="-1"> {onClose()} <CssBaseline/> <Dialog open={true} onClose={onClose} className="max-w-md p-4 bg-white border rounded shadow-lg"> <DialogTitle className="text-lg font-medium text-gray-900 md:text-sm"> {title} </DialogTitle> <DialogContent>{content}</DialogContent> <DialogActions> {actions.map((action, index) => ( <button key={index} 
+       type="button" 
+       className={action.primary ? 'color-green-600 bg-green-100/' + Math.floor((index + 1) * 100) : 'color-blue-600 bg-blue-100/' + Math.floor((index + 1) * 100)}> 
+       {action.label} 
+     </button> ) ) } </DialogActions> </Dialog> } </div> ); }; export default AlertDialog;
