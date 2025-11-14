@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/ui/theme-provider"; // Caminho corrigido
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { WorkspaceProvider } from "@/hooks/useWorkspace"; // Importar WorkspaceProvider
+import { WorkspaceProvider } from "@/hooks/useWorkspace";
 
 import Index from "@/pages/Index";
 import Login from "@/pages/Login";
@@ -29,7 +29,7 @@ function App() {
               path="/"
               element={
                 <ProtectedRoute>
-                  <WorkspaceProvider> {/* Envolver a rota com WorkspaceProvider */}
+                  <WorkspaceProvider>
                     <AppLayout>
                       <Index />
                     </AppLayout>
@@ -41,7 +41,7 @@ function App() {
               path="/brain"
               element={
                 <ProtectedRoute requireAdmin>
-                  <WorkspaceProvider> {/* Envolver a rota com WorkspaceProvider */}
+                  <WorkspaceProvider>
                     <AppLayout>
                       <BrainPage />
                     </AppLayout>
@@ -53,7 +53,7 @@ function App() {
               path="/changelog"
               element={
                 <ProtectedRoute>
-                  <WorkspaceProvider> {/* Envolver a rota com WorkspaceProvider */}
+                  <WorkspaceProvider>
                     <AppLayout>
                       <Changelog />
                     </AppLayout>
