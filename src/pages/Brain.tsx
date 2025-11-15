@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, AlertCircle, Building2, Plug } from 'lucide-react';
+import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, AlertCircle, Building2, Plug, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { MovementRulesManager } from '@/components/MovementRulesManager';
 import { InactivityRulesManager } from '@/components/InactivityRulesManager';
 import { AIPromptBuilder } from '@/components/AIPromptBuilder';
 import { ChatwootSettings } from '@/components/ChatwootSettings';
+import { EvolutionSettings } from '@/components/EvolutionSettings';
 import { IntegrationStatusBadge } from '@/components/IntegrationStatusBadge';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -407,9 +408,28 @@ const Brain = () => {
             </TabsContent>
 
             <TabsContent value="integrations" className="space-y-4">
-              <ChatwootSettings 
-                pipelineId={pipeline.id}
-              />
+              <Tabs defaultValue="chatwoot">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="chatwoot" className="flex items-center gap-2">
+                    <Plug className="w-4 h-4" />
+                    Chatwoot
+                  </TabsTrigger>
+                  <TabsTrigger value="evolution" className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    WhatsApp (Evolution)
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="chatwoot" className="space-y-4 mt-4">
+                  <ChatwootSettings 
+                    pipelineId={pipeline.id}
+                  />
+                </TabsContent>
+                <TabsContent value="evolution" className="space-y-4 mt-4">
+                  <EvolutionSettings 
+                    pipelineId={pipeline.id}
+                  />
+                </TabsContent>
+              </Tabs>
             </TabsContent>
           </Tabs>
         </div>
