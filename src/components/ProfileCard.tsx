@@ -1,2 +1,2 @@
-// Import statement in App.tsx 
+// Reference to the renamed component 
 import ProfileCard from './components/ProfileCard';
