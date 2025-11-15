@@ -1,17 +1,26 @@
 import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { AppLayout } from './components/AppLayout';
+import Index from './pages/Index';
+import Auth from './pages/Auth';
+import Brain from './pages/Brain';
+import Integrations from './pages/Integrations';
+import Changelog from './pages/Changelog';
 import './index.css';
 import { Toaster } from 'sonner';
 
 function App() {
   return (
     <>
-      <AppLayout>
-        <div className="p-4">
-          <h1 className="text-2xl font-bold mb-4">Flow AI Board</h1>
-          <p className="text-muted-foreground">Welcome to your AI-powered Kanban board</p>
-        </div>
-      </AppLayout>
+      <Routes>
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/" element={<AppLayout />}>
+          <Route index element={<Index />} />
+          <Route path="brain" element={<Brain />} />
+          <Route path="integrations" element={<Integrations />} />
+          <Route path="changelog" element={<Changelog />} />
+        </Route>
+      </Routes>
       <Toaster />
     </>
   );
