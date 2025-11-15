@@ -1,15 +1,6 @@
-"use client";
 import React from 'react';
-import { ThemeProvider, Suspense } from 'react-dom';
-import App from './App'; // Updated import
+import App from '../App';
 
-function App() {
-  return (
-    <ThemeProvider theme="base">
-      <Suspense fallback="Loading...">
-        <App />
-      </Suspense>
-    </ThemeProvider>
-  );
+export default function AppPage() {
+  return <App />;
 }
-export default App;

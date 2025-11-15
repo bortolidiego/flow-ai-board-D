@@ -1,12 +1,20 @@
-"use client";
 import React from 'react';
-import AppLayout from './components/AppLayout';
-import ThemeSelector from './components/ThemeSelector';
+import { AppLayout } from './components/AppLayout';
+import './index.css';
+import { Toaster } from 'sonner';
 
-export default function App() {
+function App() {
   return (
-    <AppLayout>
-      <ThemeSelector />
-    </AppLayout>
+    <>
+      <AppLayout>
+        <div className="p-4">
+          <h1 className="text-2xl font-bold mb-4">Flow AI Board</h1>
+          <p className="text-muted-foreground">Welcome to your AI-powered Kanban board</p>
+        </div>
+      </AppLayout>
+      <Toaster />
+    </>
   );
 }
+
+export default App;
