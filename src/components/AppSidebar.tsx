@@ -1,4 +1,4 @@
-import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText, Settings } from "lucide-react";
+import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -28,12 +28,6 @@ const menuItems = [
     title: "Brain",
     url: "/brain",
     icon: Brain as any,
-    requireAdmin: true,
-  },
-  {
-    title: "Integrações",
-    url: "/integrations",
-    icon: Settings,
     requireAdmin: true,
   },
   {

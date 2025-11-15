@@ -1,29 +1,71 @@
-import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-import { AppLayout } from './components/AppLayout';
-import Index from './pages/Index';
-import Auth from './pages/Auth';
-import Brain from './pages/Brain';
-import Integrations from './pages/Integrations';
-import Changelog from './pages/Changelog';
-import './index.css';
-import { Toaster } from 'sonner';
+import React from "react";
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AppLayout } from "./components/AppLayout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import KanbanBoard from "./pages/KanbanBoard";
+import Brain from "./pages/Brain";
+import BrainNew from "./pages/BrainNew";
+import Auth from "./pages/Auth";
+import AcceptInvite from "./pages/AcceptInvite";
+import Changelog from "./pages/Changelog";
+import NotFound from "./pages/NotFound";
+import ProvisionWrapper from "@/components/ProvisionWrapper";
 
-function App() {
-  return (
-    <>
-      <Routes>
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/" element={<AppLayout />}>
-          <Route index element={<Index />} />
-          <Route path="brain" element={<Brain />} />
-          <Route path="integrations" element={<Integrations />} />
-          <Route path="changelog" element={<Changelog />} />
-        </Route>
-      </Routes>
+const queryClient = new QueryClient();
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
       <Toaster />
-    </>
-  );
-}
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/accept-invite" element={<AcceptInvite />} />
+          <Route 
+            path="/" 
+            element={
+              <ProtectedRoute>
+                <AppLayout><KanbanBoard /></AppLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/brain" 
+            element={
+              <ProtectedRoute requireAdmin>
+                <AppLayout><Brain /></AppLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/brain/new" 
+            element={
+              <ProtectedRoute requireAdmin>
+                <AppLayout><BrainNew /></AppLayout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route
+            path="/changelog"
+            element={
+              <ProtectedRoute>
+                <AppLayout><Changelog /></AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          {/* Rota pública para provisionamento manual */}
+          <Route path="/provision" element={<ProvisionWrapper />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 export default App;

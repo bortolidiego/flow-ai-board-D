@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useToast } from '@/hooks/use-toast';
 
 export interface Card {
   id: string;
@@ -8,7 +8,7 @@ export interface Card {
   description: string;
   priority: 'low' | 'medium' | 'high';
   assignee?: string;
-  aiSuggested?: boolean;
+  ai_suggested?: boolean;
   createdAt: string;
   columnId: string;
   chatwootContactName?: string;
@@ -42,192 +42,314 @@ export interface Column {
   id: string;
   name: string;
   position: number;
-  cards: Card[];
+}
+
+export interface CustomField {
+  id: string;
+  field_name: string;
+  field_label: string;
+  field_type: string;
+  field_options?: any;
+  is_required: boolean;
+  position: number;
+}
+
+export interface FunnelType {
+  id: string;
+  funnel_type: string;
+  funnel_name: string;
+  color?: string;
+  is_monetary?: boolean;
+  priority?: number;
+  lifecycle_stages?: any[];
+  inactivity_days?: number;
+}
+
+export interface AIConfig {
+  id: string;
+  generated_prompt: string;
+  custom_prompt?: string;
+  use_custom_prompt: boolean;
+  model_name: string;
+  analyze_on_message: boolean;
+  analyze_on_close: boolean;
 }
 
 export interface PipelineConfig {
-  customFields: any[];
-  funnelTypes: any[];
-  aiConfig?: any;
+  customFields: CustomField[];
+  funnelTypes: FunnelType[];
+  aiConfig?: AIConfig;
 }
 
-export function useKanbanData(pipelineId?: string) {
-  const { workspace } = useWorkspace();
-  const [columns, setColumns] = useState<Column[]>([]);
+export interface Pipeline {
+  id: string;
+  columns: Column[];
+}
+
+export const useKanbanData = (workspaceId?: string) => {
+  const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
-  const [pipeline, setPipeline] = useState<any>(null);
   const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  const currentPipelineId = pipelineId || workspace?.id;
+  const fetchPipeline = async (wsId: string) => {
+    const { data, error } = await supabase
+      .from('pipelines')
+      .select(`
+        id,
+        workspace_id,
+        columns (
+          id,
+          name,
+          position
+        )
+      `)
+      .eq('workspace_id', wsId)
+      .single();
 
-  useEffect(() => {
-    if (currentPipelineId) {
-      loadData();
+    if (error) {
+      toast({
+        title: 'Erro ao carregar pipeline',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
     }
-  }, [currentPipelineId]);
 
-  const loadData = async () => {
-    if (!currentPipelineId) return;
+    if (data) {
+      const formattedPipeline = {
+        id: data.id,
+        columns: data.columns.sort((a: any, b: any) => a.position - b.position),
+      };
+      setPipeline(formattedPipeline);
+    }
+  };
 
-    setLoading(true);
+  const fetchPipelineConfig = async (pipelineId: string) => {
     try {
-      // Load columns
-      const { data: columnsData, error: columnsError } = await supabase
-        .from('columns')
-        .select('*')
-        .eq('pipeline_id', currentPipelineId)
-        .order('position');
-
-      if (columnsError) throw columnsError;
-
-      // Load cards for each column
-      const columnsWithCards = await Promise.all(
-        (columnsData || []).map(async (column) => {
-          const { data: cardsData, error: cardsError } = await supabase
-            .from('cards')
-            .select('*')
-            .eq('column_id', column.id)
-            .order('position');
-
-          if (cardsError) throw cardsError;
-
-          // Transform card data to match Card interface
-          const transformedCards: Card[] = (cardsData || []).map(card => ({
-            id: card.id,
-            title: card.title,
-            description: card.description,
-            priority: (card.priority as 'low' | 'medium' | 'high') || 'medium',
-            assignee: card.assignee,
-            aiSuggested: card.ai_suggested,
-            createdAt: card.created_at,
-            columnId: card.column_id,
-            chatwootContactName: card.chatwoot_contact_name,
-            chatwootConversationId: card.chatwoot_conversation_id,
-            chatwootUrl: (card as any).chatwoot_url,
-            chatwootAccountId: (card as any).chatwoot_account_id,
-            inboxName: card.inbox_name,
-            funnelScore: card.funnel_score,
-            serviceQualityScore: card.service_quality_score,
-            value: card.value,
-            productItem: card.product_item,
-            subject: card.subject,
-            funnelType: card.funnel_type,
-            conversationStatus: card.conversation_status as 'open' | 'closed',
-            winConfirmation: card.win_confirmation,
-            lossReason: card.loss_reason,
-            customFieldsData: card.custom_fields_data as Record<string, any>,
-            completionType: card.completion_type as 'won' | 'lost' | 'completed' | null,
-            completionReason: card.completion_reason,
-            completedAt: card.completed_at,
-            completedBy: card.completed_by,
-            customerProfileId: card.customer_profile_id,
-            currentLifecycleStage: card.current_lifecycle_stage,
-            lifecycleProgressPercent: card.lifecycle_progress_percent,
-            resolutionStatus: card.resolution_status,
-            isMonetaryLocked: card.is_monetary_locked,
-            lastActivityAt: card.last_activity_at,
-          }));
-
-          return {
-            ...column,
-            cards: transformedCards
-          };
-        })
-      );
-
-      // Load pipeline config
-      const { data: customFields } = await supabase
+      // Buscar custom fields
+      const { data: customFieldsData, error: customFieldsError } = await supabase
         .from('pipeline_custom_fields')
         .select('*')
-        .eq('pipeline_id', currentPipelineId)
+        .eq('pipeline_id', pipelineId)
         .order('position');
 
-      const { data: funnelTypes } = await supabase
+      if (customFieldsError) throw customFieldsError;
+
+      // Buscar funnel types
+      const { data: funnelTypesData, error: funnelTypesError } = await supabase
         .from('funnel_config')
         .select('*')
-        .eq('pipeline_id', currentPipelineId)
+        .eq('pipeline_id', pipelineId)
         .order('position');
 
-      const { data: aiConfig } = await supabase
+      if (funnelTypesError) throw funnelTypesError;
+
+      // Buscar AI config
+      const { data: aiConfigData, error: aiConfigError } = await supabase
         .from('pipeline_ai_config')
         .select('*')
-        .eq('pipeline_id', currentPipelineId)
+        .eq('pipeline_id', pipelineId)
         .maybeSingle();
 
-      const config: PipelineConfig = {
-        customFields: customFields || [],
-        funnelTypes: funnelTypes || [],
-        aiConfig: aiConfig || undefined,
-      };
+      if (aiConfigError && aiConfigError.code !== 'PGRST116') throw aiConfigError;
 
-      // Flatten all cards
-      const allCards = columnsWithCards.flatMap(col => col.cards);
+      const typedFunnelTypes = (funnelTypesData || []).map(d => ({
+        ...d,
+        lifecycle_stages: (d.lifecycle_stages as any) || []
+      })) as FunnelType[];
 
-      setColumns(columnsWithCards);
-      setCards(allCards);
-      setPipeline({ id: currentPipelineId });
-      setPipelineConfig(config);
+      setPipelineConfig({
+        customFields: customFieldsData || [],
+        funnelTypes: typedFunnelTypes,
+        aiConfig: aiConfigData || undefined,
+      });
     } catch (error) {
-      console.error('Error loading kanban data:', error);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching pipeline config:', error);
+      setPipelineConfig(null);
+    }
+  };
+
+  const fetchCards = async (pipelineId: string) => {
+    const { data: pipelineData } = await supabase
+      .from('pipelines')
+      .select('columns(id)')
+      .eq('id', pipelineId)
+      .single();
+
+    if (!pipelineData?.columns) return;
+
+    const columnIds = (pipelineData.columns as any[]).map(c => c.id);
+
+    // Fetch Chatwoot URL and account ID for this pipeline
+    const { data: chatwootIntegration } = await supabase
+      .from('chatwoot_integrations')
+      .select('chatwoot_url, account_id')
+      .eq('pipeline_id', pipelineId)
+      .maybeSingle();
+
+    const chatwootUrl = chatwootIntegration?.chatwoot_url;
+    const chatwootAccountId = chatwootIntegration?.account_id;
+
+    const { data, error } = await supabase
+      .from('cards')
+      .select('*')
+      .in('column_id', columnIds)
+      .order('position');
+
+    if (error) {
+      toast({
+        title: 'Erro ao carregar cards',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (data) {
+      const formattedCards = data.map(card => ({
+        id: card.id,
+        title: card.title,
+        description: card.description || '',
+        priority: card.priority as 'low' | 'medium' | 'high',
+        assignee: card.assignee,
+        ai_suggested: card.ai_suggested,
+        createdAt: card.created_at,
+        columnId: card.column_id,
+        chatwootContactName: card.chatwoot_contact_name,
+        chatwootConversationId: card.chatwoot_conversation_id,
+        chatwootUrl: chatwootUrl,
+        chatwootAccountId: chatwootAccountId,
+        inboxName: card.inbox_name,
+        funnelScore: card.funnel_score,
+        serviceQualityScore: card.service_quality_score,
+        value: card.value,
+        productItem: card.product_item,
+        subject: card.subject,
+        funnelType: card.funnel_type,
+        conversationStatus: (card.conversation_status || 'open') as 'open' | 'closed',
+        winConfirmation: card.win_confirmation,
+        lossReason: card.loss_reason,
+        customFieldsData: (card.custom_fields_data as Record<string, any>) || {},
+        completionType: card.completion_type as 'won' | 'lost' | 'completed' | null,
+        completionReason: card.completion_reason,
+        completedAt: card.completed_at,
+        completedBy: card.completed_by,
+        customerProfileId: card.customer_profile_id,
+      }));
+      setCards(formattedCards);
     }
   };
 
   const updateCardColumn = async (cardId: string, newColumnId: string) => {
-    try {
-      const { error } = await supabase
-        .from('cards')
-        .update({ column_id: newColumnId })
-        .eq('id', cardId);
+    const { error } = await supabase
+      .from('cards')
+      .update({ column_id: newColumnId })
+      .eq('id', cardId);
 
-      if (error) throw error;
-      await loadData();
-    } catch (error) {
-      console.error('Error updating card column:', error);
+    if (error) {
+      toast({
+        title: 'Erro ao mover card',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return false;
     }
+
+    return true;
   };
 
   const deleteCards = async (cardIds: string[]) => {
-    try {
-      const { error } = await supabase
-        .from('cards')
-        .delete()
-        .in('id', cardIds);
+    const { error } = await supabase.rpc('delete_cards_bulk', {
+      card_ids: cardIds
+    });
 
-      if (error) throw error;
-      await loadData();
-    } catch (error) {
-      console.error('Error deleting cards:', error);
+    if (error) {
+      toast({
+        title: 'Erro ao excluir cards',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return false;
     }
+
+    toast({
+      title: 'Cards excluídos',
+      description: `${cardIds.length} ${cardIds.length === 1 ? 'card excluído' : 'cards excluídos'} com sucesso.`,
+    });
+
+    return true;
   };
 
   const bulkUpdateCardColumn = async (cardIds: string[], newColumnId: string) => {
-    try {
-      const { error } = await supabase
-        .from('cards')
-        .update({ column_id: newColumnId })
-        .in('id', cardIds);
+    const { error } = await supabase.rpc('update_cards_column_bulk', {
+      card_ids: cardIds,
+      new_column_id: newColumnId
+    });
 
-      if (error) throw error;
-      await loadData();
-    } catch (error) {
-      console.error('Error bulk updating cards:', error);
+    if (error) {
+      toast({
+        title: 'Erro ao transferir cards',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return false;
     }
+
+    toast({
+      title: 'Cards transferidos',
+      description: `${cardIds.length} ${cardIds.length === 1 ? 'card transferido' : 'cards transferidos'} com sucesso.`,
+    });
+
+    return true;
   };
 
+  useEffect(() => {
+    const init = async () => {
+      if (!workspaceId) return;
+      
+      setLoading(true);
+      await fetchPipeline(workspaceId);
+      setLoading(false);
+    };
+    init();
+
+    // Subscribe to realtime changes
+    const channel = supabase
+      .channel('kanban-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cards' },
+        () => {
+          if (pipeline) {
+            fetchCards(pipeline.id);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (pipeline) {
+      fetchCards(pipeline.id);
+      fetchPipelineConfig(pipeline.id);
+    }
+  }, [pipeline]);
+
   return {
-    columns,
-    cards,
     pipeline,
+    cards,
     pipelineConfig,
     loading,
     updateCardColumn,
     deleteCards,
     bulkUpdateCardColumn,
-    refetch: loadData,
-    fetchPipeline: loadData,
-    refreshCards: loadData,
+    refreshCards: () => pipeline && fetchCards(pipeline.id),
+    fetchPipeline: () => workspaceId && fetchPipeline(workspaceId),
   };
-}
+};
