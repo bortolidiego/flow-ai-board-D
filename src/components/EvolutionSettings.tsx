@@ -14,6 +14,25 @@ interface EvolutionSettingsProps {
   pipelineId: string;
 }
 
+interface EvolutionIntegration {
+  id: string;
+  pipeline_id: string;
+  instance_name: string;
+  instance_alias: string | null;
+  webhook_url: string;
+  api_url: string;
+  api_key: string;
+  phone_number: string | null;
+  status: string;
+  last_connection: string | null;
+  events_enabled: string[] | null;
+  auto_create_cards: boolean;
+  analyze_messages: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const EvolutionSettings = ({
   pipelineId
 }: EvolutionSettingsProps) => {
@@ -42,29 +61,29 @@ export const EvolutionSettings = ({
 
   const loadIntegration = async () => {
     try {
-      // Using type assertion to bypass TypeScript issues with unknown table
-      const { data, error } = await (supabase
-        .from('evolution_integrations' as any)
+      const { data, error } = await supabase
+        .from('evolution_integrations')
         .select('*')
         .eq('pipeline_id', pipelineId)
-        .maybeSingle()) as any;
+        .maybeSingle();
 
       if (error) throw error;
 
       if (data) {
+        const integration = data as EvolutionIntegration;
         setHasIntegration(true);
-        setIntegrationId(data.id);
-        setInstanceName(data.instance_name);
-        setInstanceAlias(data.instance_alias || '');
-        setWebhookUrl(data.webhook_url);
-        setApiUrl(data.api_url);
-        setApiKey(data.api_key);
-        setPhoneNumber(data.phone_number || '');
-        setActive(data.active);
-        setAutoCreateCards(data.auto_create_cards ?? true);
-        setAnalyzeMessages(data.analyze_messages ?? true);
-        setLastConnection(data.last_connection || null);
-        setStatus(data.status || 'disconnected');
+        setIntegrationId(integration.id);
+        setInstanceName(integration.instance_name);
+        setInstanceAlias(integration.instance_alias || '');
+        setWebhookUrl(integration.webhook_url);
+        setApiUrl(integration.api_url);
+        setApiKey(integration.api_key);
+        setPhoneNumber(integration.phone_number || '');
+        setActive(integration.active);
+        setAutoCreateCards(integration.auto_create_cards ?? true);
+        setAnalyzeMessages(integration.analyze_messages ?? true);
+        setLastConnection(integration.last_connection || null);
+        setStatus(integration.status || 'disconnected');
       }
     } catch (error) {
       console.error('Error loading integration:', error);
@@ -84,9 +103,8 @@ export const EvolutionSettings = ({
     setLoading(true);
     try {
       if (hasIntegration) {
-        // Using type assertion to bypass TypeScript issues with unknown table
-        const { error } = await (supabase
-          .from('evolution_integrations' as any)
+        const { error } = await supabase
+          .from('evolution_integrations')
           .update({
             instance_name: instanceName,
             instance_alias: instanceAlias || null,
@@ -99,13 +117,12 @@ export const EvolutionSettings = ({
             analyze_messages: analyzeMessages,
             updated_at: new Date().toISOString()
           })
-          .eq('id', integrationId)) as any;
+          .eq('id', integrationId);
 
         if (error) throw error;
       } else {
-        // Using type assertion to bypass TypeScript issues with unknown table
-        const { error } = await (supabase
-          .from('evolution_integrations' as any)
+        const { error } = await supabase
+          .from('evolution_integrations')
           .insert({
             pipeline_id: pipelineId,
             instance_name: instanceName,
@@ -117,7 +134,7 @@ export const EvolutionSettings = ({
             active,
             auto_create_cards: autoCreateCards,
             analyze_messages: analyzeMessages
-          })) as any;
+          });
 
         if (error) throw error;
       }
@@ -160,11 +177,10 @@ export const EvolutionSettings = ({
   const toggleActive = async (newActive: boolean) => {
     setLoading(true);
     try {
-      // Using type assertion to bypass TypeScript issues with unknown table
-      const { error } = await (supabase
-        .from('evolution_integrations' as any)
+      const { error } = await supabase
+        .from('evolution_integrations')
         .update({ active: newActive })
-        .eq('id', integrationId)) as any;
+        .eq('id', integrationId);
 
       if (error) throw error;
 
