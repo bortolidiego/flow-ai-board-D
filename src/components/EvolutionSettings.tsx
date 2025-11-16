@@ -67,7 +67,10 @@ export const EvolutionSettings = ({
         .eq('pipeline_id', pipelineId)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading integration:', error);
+        return;
+      }
 
       if (data) {
         const integration = data as EvolutionIntegration;
@@ -102,39 +105,32 @@ export const EvolutionSettings = ({
 
     setLoading(true);
     try {
+      const integrationData = {
+        pipeline_id: pipelineId,
+        instance_name: instanceName,
+        instance_alias: instanceAlias || null,
+        webhook_url: webhookUrl,
+        api_url: apiUrl,
+        api_key: apiKey,
+        phone_number: phoneNumber || null,
+        active,
+        auto_create_cards: autoCreateCards,
+        analyze_messages: analyzeMessages,
+        status: status || 'disconnected',
+        updated_at: new Date().toISOString()
+      };
+
       if (hasIntegration) {
         const { error } = await supabase
           .from('evolution_integrations')
-          .update({
-            instance_name: instanceName,
-            instance_alias: instanceAlias || null,
-            webhook_url: webhookUrl,
-            api_url: apiUrl,
-            api_key: apiKey,
-            phone_number: phoneNumber || null,
-            active,
-            auto_create_cards: autoCreateCards,
-            analyze_messages: analyzeMessages,
-            updated_at: new Date().toISOString()
-          })
+          .update(integrationData)
           .eq('id', integrationId);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('evolution_integrations')
-          .insert({
-            pipeline_id: pipelineId,
-            instance_name: instanceName,
-            instance_alias: instanceAlias || null,
-            webhook_url: webhookUrl,
-            api_url: apiUrl,
-            api_key: apiKey,
-            phone_number: phoneNumber || null,
-            active,
-            auto_create_cards: autoCreateCards,
-            analyze_messages: analyzeMessages
-          });
+          .insert(integrationData);
 
         if (error) throw error;
       }
@@ -146,9 +142,10 @@ export const EvolutionSettings = ({
 
       await loadIntegration();
     } catch (error: any) {
+      console.error('Error saving integration:', error);
       toast({
         title: 'Erro ao salvar',
-        description: error.message,
+        description: error.message || 'Erro desconhecido ao salvar integração',
         variant: 'destructive'
       });
     } finally {
@@ -179,7 +176,7 @@ export const EvolutionSettings = ({
     try {
       const { error } = await supabase
         .from('evolution_integrations')
-        .update({ active: newActive })
+        .update({ active: newActive, updated_at: new Date().toISOString() })
         .eq('id', integrationId);
 
       if (error) throw error;
