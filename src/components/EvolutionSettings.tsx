@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Copy, Play, Pause, Clock, MessageSquare, Zap } from 'lucide-react';
+import { Copy, Play, Pause, Clock, MessageSquare, Zap, AlertCircle } from 'lucide-react';
 import { IntegrationStatusBadge } from '@/components/IntegrationStatusBadge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface EvolutionSettingsProps {
   pipelineId: string;
@@ -51,6 +52,7 @@ export const EvolutionSettings = ({
   const [showPauseDialog, setShowPauseDialog] = useState(false);
   const [lastConnection, setLastConnection] = useState<string | null>(null);
   const [status, setStatus] = useState<string>('disconnected');
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const evolutionWebhookUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/evolution-webhook`;
@@ -61,6 +63,8 @@ export const EvolutionSettings = ({
 
   const loadIntegration = async () => {
     try {
+      console.log('Loading integration for pipeline:', pipelineId);
+      
       const { data, error } = await supabase
         .from('evolution_integrations')
         .select('*')
@@ -69,8 +73,11 @@ export const EvolutionSettings = ({
 
       if (error) {
         console.error('Error loading integration:', error);
+        setError(`Erro ao carregar integração: ${error.message}`);
         return;
       }
+
+      console.log('Integration data loaded:', data);
 
       if (data) {
         const integration = data as EvolutionIntegration;
@@ -87,9 +94,14 @@ export const EvolutionSettings = ({
         setAnalyzeMessages(integration.analyze_messages ?? true);
         setLastConnection(integration.last_connection || null);
         setStatus(integration.status || 'disconnected');
+        setError(null);
+      } else {
+        setHasIntegration(false);
+        setError(null);
       }
     } catch (error) {
       console.error('Error loading integration:', error);
+      setError(`Erro ao carregar integração: ${error}`);
     }
   };
 
@@ -104,7 +116,23 @@ export const EvolutionSettings = ({
     }
 
     setLoading(true);
+    setError(null);
+    
     try {
+      console.log('Saving integration data:', {
+        pipeline_id: pipelineId,
+        instance_name: instanceName,
+        instance_alias: instanceAlias || null,
+        webhook_url: webhookUrl,
+        api_url: apiUrl,
+        api_key: apiKey,
+        phone_number: phoneNumber || null,
+        active,
+        auto_create_cards: autoCreateCards,
+        analyze_messages: analyzeMessages,
+        status: status || 'disconnected'
+      });
+
       const integrationData = {
         pipeline_id: pipelineId,
         instance_name: instanceName,
@@ -116,23 +144,30 @@ export const EvolutionSettings = ({
         active,
         auto_create_cards: autoCreateCards,
         analyze_messages: analyzeMessages,
-        status: status || 'disconnected',
-        updated_at: new Date().toISOString()
+        status: status || 'disconnected'
       };
 
       if (hasIntegration) {
+        console.log('Updating existing integration:', integrationId);
         const { error } = await supabase
           .from('evolution_integrations')
           .update(integrationData)
           .eq('id', integrationId);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error updating integration:', error);
+          throw error;
+        }
       } else {
+        console.log('Creating new integration');
         const { error } = await supabase
           .from('evolution_integrations')
           .insert(integrationData);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error creating integration:', error);
+          throw error;
+        }
       }
 
       toast({
@@ -143,9 +178,11 @@ export const EvolutionSettings = ({
       await loadIntegration();
     } catch (error: any) {
       console.error('Error saving integration:', error);
+      const errorMessage = error.message || 'Erro desconhecido ao salvar integração';
+      setError(errorMessage);
       toast({
         title: 'Erro ao salvar',
-        description: error.message || 'Erro desconhecido ao salvar integração',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
@@ -176,7 +213,7 @@ export const EvolutionSettings = ({
     try {
       const { error } = await supabase
         .from('evolution_integrations')
-        .update({ active: newActive, updated_at: new Date().toISOString() })
+        .update({ active: newActive })
         .eq('id', integrationId);
 
       if (error) throw error;
@@ -223,6 +260,14 @@ export const EvolutionSettings = ({
 
   return (
     <div className="space-y-6">
+      {/* Error Display */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Status Card */}
       {hasIntegration && (
         <Card className={`border-2 ${active ? 'border-primary/30 bg-primary/5' : 'border-orange-500/30 bg-orange-500/5'}`}>
