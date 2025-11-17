@@ -128,6 +128,17 @@ export default function KanbanBoard() {
     resolutionStatus: [],
     dateRange: null,
   });
+
+  // Adicionando logs para rastrear o estado
+  useEffect(() => {
+    console.log('--- KanbanBoard State Update ---');
+    console.log(`Workspace Loading: ${workspaceLoading}`);
+    console.log(`Kanban Data Loading: ${kanbanLoading}`);
+    console.log(`Workspace ID: ${workspace?.id || 'N/A'}`);
+    console.log(`Pipeline ID: ${pipeline?.id || 'N/A'}`);
+    console.log(`Total Cards: ${cards.length}`);
+    console.log('--------------------------------');
+  }, [workspaceLoading, kanbanLoading, workspace, pipeline, cards.length]);
   
   // Filter and sort cards
   const { filteredCards, filteredCount } = useMemo(() => {
@@ -381,6 +392,7 @@ export default function KanbanBoard() {
   const loading = workspaceLoading || kanbanLoading;
 
   if (loading) {
+    console.log('KanbanBoard: Rendering Loading Spinner.');
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
@@ -390,7 +402,7 @@ export default function KanbanBoard() {
 
   // Se o workspace carregou e é null, redirecionar para provisionamento
   if (!workspace && !workspaceLoading) {
-    // Usar useEffect para navegação para evitar side effects durante a renderização
+    console.warn('KanbanBoard: Workspace not found after loading. Redirecting to /provision.');
     useEffect(() => {
       navigate('/provision');
     }, [navigate]);
@@ -399,6 +411,7 @@ export default function KanbanBoard() {
 
   // Se o workspace carregou, mas não há pipeline, sugerir provisionamento
   if (workspace && !pipeline) {
+    console.warn(`KanbanBoard: Workspace found (${workspace.id}), but no Pipeline found after loading. Rendering configuration prompt.`);
     return (
       <div className="flex items-center justify-center h-full p-8">
         <UICard className="w-full max-w-lg text-center">
