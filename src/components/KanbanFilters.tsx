@@ -211,14 +211,14 @@ export const KanbanFilters = ({
                     <div className="space-y-2">
                       <Label className="text-xs">Etapa Atual</Label>
                       <Select
-                        value={filters.lifecycleStages[0] || ''}
-                        onValueChange={(value) => updateFilter('lifecycleStages', value ? [value] : [])}
+                        value={filters.lifecycleStages[0] || '_all'}
+                        onValueChange={(value) => updateFilter('lifecycleStages', value === '_all' ? [] : [value])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Todas as etapas" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Todas</SelectItem>
+                          <SelectItem value="_all">Todas</SelectItem>
                           {uniqueValues.lifecycleStages.map(stage => (
                             <SelectItem key={stage} value={stage}>{stage}</SelectItem>
                           ))}
@@ -303,14 +303,14 @@ export const KanbanFilters = ({
                     <div className="space-y-2">
                       <Label className="text-xs">Atendente</Label>
                       <Select
-                        value={filters.assignee[0] || ''}
-                        onValueChange={(value) => updateFilter('assignee', value ? [value] : [])}
+                        value={filters.assignee[0] || '_all'}
+                        onValueChange={(value) => updateFilter('assignee', value === '_all' ? [] : [value])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Todos" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Todos</SelectItem>
+                          <SelectItem value="_all">Todos</SelectItem>
                           {uniqueValues.assignees.map(a => (
                             <SelectItem key={a} value={a}>{a}</SelectItem>
                           ))}
@@ -367,14 +367,14 @@ export const KanbanFilters = ({
                     <div className="space-y-2">
                       <Label className="text-xs">Produto/Serviço</Label>
                       <Select
-                        value={filters.productItem[0] || ''}
-                        onValueChange={(value) => updateFilter('productItem', value ? [value] : [])}
+                        value={filters.productItem[0] || '_all'}
+                        onValueChange={(value) => updateFilter('productItem', value === '_all' ? [] : [value])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Todos" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Todos</SelectItem>
+                          <SelectItem value="_all">Todos</SelectItem>
                           {uniqueValues.products.map(p => (
                             <SelectItem key={p} value={p}>{p}</SelectItem>
                           ))}
