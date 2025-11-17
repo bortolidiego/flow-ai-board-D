@@ -15,56 +15,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useNavigate } from 'react-router-dom';
 import { Card as UICard, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-// Define types directly since imports were causing issues
-interface Card {
-  id: string;
-  title: string;
-  description: string;
-  priority: 'low' | 'medium' | 'high';
-  assignee?: string;
-  aiSuggested?: boolean;
-  createdAt: string;
-  chatwootContactName?: string;
-  chatwootConversationId?: string;
-  chatwootUrl?: string;
-  chatwootAccountId?: string;
-  inboxName?: string;
-  funnelScore?: number;
-  serviceQualityScore?: number;
-  value?: number;
-  productItem?: string;
-  subject?: string;
-  funnelType?: string;
-  conversationStatus?: 'open' | 'closed';
-  winConfirmation?: string;
-  lossReason?: string;
-  customFieldsData?: Record<string, any>;
-  completionType?: string | null;
-  completionReason?: string | null;
-  completedAt?: string | null;
-  completedBy?: string | null;
-  customerProfileId?: string | null;
-  currentLifecycleStage?: string | null;
-  lifecycleProgressPercent?: number;
-  resolutionStatus?: string | null;
-  isMonetaryLocked?: boolean;
-  lastActivityAt?: string | null;
-  columnId?: string;
-  position?: number;
-}
-interface Column {
-  id: string;
-  name: string;
-  position: number;
-}
-interface PipelineConfig {
-  customFields: any[];
-  funnelTypes?: any[];
-  aiConfig?: {
-    id: string;
-  };
-}
+import { Card, Column, PipelineConfig } from '@/lib/kanban'; // Importando tipos de lib/kanban
 
 // Definindo a interface completa para KanbanFiltersType (inferida dos erros)
 interface KanbanFiltersType {

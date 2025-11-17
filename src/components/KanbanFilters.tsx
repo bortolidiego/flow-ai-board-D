@@ -20,7 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { KanbanFilters as KanbanFiltersType, QuickFilter } from '@/types/kanbanFilters';
-import { Card } from '@/hooks/useKanbanData';
+import { Card } from '@/lib/kanban'; // Corrigido Erro 4: Importar Card de @/lib/kanban
 import { cn } from '@/lib/utils';
 
 interface KanbanFiltersProps {
@@ -405,7 +405,7 @@ export const KanbanFilters = ({
                         value={filters.valueRange?.max === Infinity ? '' : filters.valueRange?.max || ''}
                         onChange={(e) => updateFilter('valueRange', {
                           min: filters.valueRange?.min || 0,
-                          max: Number(e.target.value) || Infinity
+                          max: filters.valueRange?.max === Infinity ? Infinity : Number(e.target.value) || Infinity
                         })}
                       />
                     </div>
