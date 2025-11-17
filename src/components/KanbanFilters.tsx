@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, SlidersHorizontal, Save, X, User, TrendingUp, Package, Lock, Clock, DollarSign } from 'lucide-react';
+import { Search, SlidersHorizontal, Save, X, User, TrendingUp, Package, Lock, Clock, DollarSign, History } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -68,43 +68,92 @@ export const KanbanFilters = ({
     lifecycleStages: Array.from(new Set(cards.map(c => c.currentLifecycleStage).filter(Boolean))),
   };
 
+  // Helper para determinar se um filtro rápido está ativo
+  const getQuickFilterStatus = (id: string) => {
+    switch (id) {
+      case 'monetary-locked':
+        return filters.isMonetaryLocked === true;
+      case 'closing':
+        return filters.progressRange?.min === 70 && filters.progressRange?.max === 100;
+      case 'stagnant':
+        return filters.inactivityDays === 7;
+      case 'unassigned':
+        return filters.isUnassigned === true;
+      case 'high-value':
+        return filters.valueRange?.min === 5000 && filters.valueRange?.max === Infinity;
+      case 'returning-customer':
+        return filters.isReturningCustomer === true;
+      default:
+        return false;
+    }
+  };
+
+  // Helper para aplicar ou limpar o filtro
+  const applyQuickFilter = (id: string) => {
+    switch (id) {
+      case 'monetary-locked':
+        return filters.isMonetaryLocked === true ? { isMonetaryLocked: null } : { isMonetaryLocked: true };
+      case 'closing':
+        return getQuickFilterStatus(id) ? { progressRange: null } : { progressRange: { min: 70, max: 100 } };
+      case 'stagnant':
+        return filters.inactivityDays === 7 ? { inactivityDays: null } : { inactivityDays: 7 };
+      case 'unassigned':
+        return filters.isUnassigned === true ? { isUnassigned: null } : { isUnassigned: true };
+      case 'high-value':
+        return getQuickFilterStatus(id) ? { valueRange: null } : { valueRange: { min: 5000, max: Infinity } };
+      case 'returning-customer':
+        return filters.isReturningCustomer === true ? { isReturningCustomer: null } : { isReturningCustomer: true };
+      default:
+        return {};
+    }
+  };
+
   const quickFilters: QuickFilter[] = [
-    {
-      id: 'monetary-locked',
-      label: 'Monetárias 🔒',
+    { 
+      id: 'monetary-locked', 
+      label: 'Monetárias 🔒', 
       icon: Lock,
       apply: () => ({ isMonetaryLocked: true }),
     },
-    {
-      id: 'closing',
-      label: 'Em Fechamento',
+    { 
+      id: 'closing', 
+      label: 'Em Fechamento', 
       icon: TrendingUp,
       apply: () => ({ progressRange: { min: 70, max: 100 } }),
     },
-    {
-      id: 'stagnant',
-      label: 'Estagnadas',
+    { 
+      id: 'stagnant', 
+      label: 'Estagnadas', 
       icon: Clock,
       apply: () => ({ inactivityDays: 7 }),
     },
-    {
-      id: 'unassigned',
-      label: 'Sem Atendente',
+    { 
+      id: 'unassigned', 
+      label: 'Sem Atendente', 
       icon: User,
       apply: () => ({ isUnassigned: true }),
     },
-    {
-      id: 'high-value',
-      label: 'Alto Valor',
+    { 
+      id: 'high-value', 
+      label: 'Alto Valor', 
       icon: DollarSign,
       apply: () => ({ valueRange: { min: 5000, max: Infinity } }),
+    },
+    { 
+      id: 'returning-customer', 
+      label: 'Recorrentes', 
+      icon: History,
+      apply: () => ({ isReturningCustomer: true }),
     },
   ];
 
   const handleQuickFilter = (filter: QuickFilter) => {
-    const newFilters = filter.apply(filters);
-    Object.entries(newFilters).forEach(([key, value]) => {
-      updateFilter(key as keyof KanbanFiltersType, value);
+    const isActive = getQuickFilterStatus(filter.id);
+    const updates = isActive ? applyQuickFilter(filter.id) : filter.apply(filters);
+    
+    // Corrigindo erro de tipagem no updateFilter (erro 9 anterior)
+    Object.entries(updates).forEach(([key, value]) => {
+      updateFilter(key as keyof KanbanFiltersType, value as KanbanFiltersType[keyof KanbanFiltersType]);
     });
   };
 
@@ -467,10 +516,12 @@ export const KanbanFilters = ({
         {!isMobile && <span className="text-xs text-muted-foreground">Filtros Rápidos:</span>}
         {quickFilters.map(filter => {
           const Icon = filter.icon;
+          const isActive = getQuickFilterStatus(filter.id); // Usando a função helper
+          
           return (
             <Button
               key={filter.id}
-              variant="outline"
+              variant={isActive ? "default" : "outline"}
               size="sm"
               onClick={() => handleQuickFilter(filter)}
               className={cn("h-8", isMobile && "justify-start text-xs")}
