@@ -162,13 +162,7 @@ export const KanbanFilters = ({
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button 
-                variant="outline" 
-                className={cn(
-                  isMobile && "flex-1 h-10 px-3",
-                  !isMobile && "h-9"
-                )}
-              >
+              <Button variant="outline" className={cn(isMobile && "flex-1")}>
                 <SlidersHorizontal className="h-4 w-4 mr-2" />
                 Filtros
                 {activeFiltersCount > 0 && (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Clock, AlertTriangle, AlertCircle, CheckCircle2, XCircle, CheckCheck } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 interface SLABadgeProps {
@@ -46,51 +47,16 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
       return;
     }
 
-    const calculateSLA = () => {
+    const calculateSLA = async () => {
       try {
-        // Use only local calculation since SLA columns don't exist in database
-        const createdDate = new Date(cardCreatedAt);
-        const now = new Date();
-        const elapsedMinutes = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60));
-        // Default SLA target of 4 hours (240 minutes)
-        const targetMinutes = 240;
-        const remainingMinutes = targetMinutes - elapsedMinutes;
-        
-        let status: 'ok' | 'warning' | 'overdue' = 'ok';
-        if (remainingMinutes < 0) {
-          status = 'overdue';
-        } else if (remainingMinutes < 60) {
-          status = 'warning';
-        }
-        
-        setSla({
-          status,
-          targetMinutes,
-          elapsedMinutes,
-          remainingMinutes
+        const { data, error } = await supabase.functions.invoke('calculate-card-sla', {
+          body: { cardId }
         });
+
+        if (error) throw error;
+        setSla(data.sla);
       } catch (error) {
-        console.warn('Error calculating SLA, using fallback:', error);
-        // Fallback calculation if anything fails
-        const createdDate = new Date(cardCreatedAt);
-        const now = new Date();
-        const elapsedMinutes = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60));
-        const targetMinutes = 240; // 4 hours default
-        const remainingMinutes = targetMinutes - elapsedMinutes;
-        
-        let status: 'ok' | 'warning' | 'overdue' = 'ok';
-        if (remainingMinutes < 0) {
-          status = 'overdue';
-        } else if (remainingMinutes < 60) {
-          status = 'warning';
-        }
-        
-        setSla({
-          status,
-          targetMinutes,
-          elapsedMinutes,
-          remainingMinutes
-        });
+        console.error('Error calculating SLA:', error);
       } finally {
         setLoading(false);
       }
@@ -100,7 +66,7 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
     const interval = setInterval(calculateSLA, 60000); // Atualizar a cada 1min
 
     return () => clearInterval(interval);
-  }, [cardId, cardCreatedAt, completionType]);
+  }, [cardId, completionType]);
 
   if (loading) return null;
 
@@ -148,7 +114,7 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
       variant: 'destructive' as const, 
       icon: AlertCircle, 
       className: 'bg-red-600 hover:bg-red-700 text-white',
-      label: `SLA: +${formatTimeUnit(Math.abs(sla.remainingMinutes))}`
+      label: `SLA: +${formatTimeUnit(sla.elapsedMinutes - sla.targetMinutes)}`
     }
   };
 
