@@ -15,7 +15,6 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useUserRole } from '@/hooks/useUserRole';
 
 // Define types directly since imports were causing issues
-type SortOption = string;
 interface Card {
   id: string;
   title: string;
@@ -109,7 +108,7 @@ export default function KanbanBoard() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [selectionMode, setSelectionMode] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>('lastActivity-desc');
+  const [sortBy, setSortBy] = useState<string>('lastActivity-desc');
   const [filters, setFilters] = useState<KanbanFiltersType>({
     search: '',
     priority: [],

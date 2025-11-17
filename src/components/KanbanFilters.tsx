@@ -19,14 +19,14 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { KanbanFilters as KanbanFiltersType, SortOption, QuickFilter } from '@/types/kanbanFilters';
+import { KanbanFilters as KanbanFiltersType, QuickFilter } from '@/types/kanbanFilters';
 import { Card } from '@/hooks/useKanbanData';
 import { cn } from '@/lib/utils';
 
 interface KanbanFiltersProps {
   filters: KanbanFiltersType;
-  sortBy: SortOption;
-  setSortBy: (sort: SortOption) => void;
+  sortBy: string; // Alterado de SortOption para string
+  setSortBy: (sort: string) => void; // Alterado para aceitar string
   updateFilter: <K extends keyof KanbanFiltersType>(key: K, value: KanbanFiltersType[K]) => void;
   resetFilters: () => void;
   activeFiltersCount: number;
@@ -191,7 +191,7 @@ export const KanbanFilters = ({
         </div>
 
         <div className={cn("flex gap-2", isMobile && "w-full")}>
-          <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
+          <Select value={sortBy} onValueChange={(value) => setSortBy(value)}>
             <SelectTrigger className={cn(isMobile ? "flex-1" : "w-[200px]")}>
               <SelectValue placeholder="Ordenar" />
             </SelectTrigger>
