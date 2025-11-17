@@ -49,14 +49,68 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
 
     const calculateSLA = async () => {
       try {
-        const { data, error } = await supabase.functions.invoke('calculate-card-sla', {
-          body: { cardId }
-        });
+        // First try to get SLA from card data directly
+        const { data: cardData, error: cardError } = await supabase
+          .from('cards')
+          .select('sla_status, sla_target_minutes, sla_elapsed_minutes, sla_remaining_minutes')
+          .eq('id', cardId)
+          .single();
 
-        if (error) throw error;
-        setSla(data.sla);
+        if (cardError) throw cardError;
+
+        // If SLA data exists on card, use it
+        if (cardData.sla_status) {
+          setSla({
+            status: cardData.sla_status,
+            targetMinutes: cardData.sla_target_minutes,
+            elapsedMinutes: cardData.sla_elapsed_minutes,
+            remainingMinutes: cardData.sla_remaining_minutes
+          });
+        } else {
+          // Fallback to local calculation if no SLA data on card
+          const createdDate = new Date(cardCreatedAt);
+          const now = new Date();
+          const elapsedMinutes = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60));
+          // Default SLA target of 4 hours (240 minutes)
+          const targetMinutes = 240;
+          const remainingMinutes = targetMinutes - elapsedMinutes;
+          
+          let status: 'ok' | 'warning' | 'overdue' = 'ok';
+          if (remainingMinutes < 0) {
+            status = 'overdue';
+          } else if (remainingMinutes < 60) {
+            status = 'warning';
+          }
+          
+          setSla({
+            status,
+            targetMinutes,
+            elapsedMinutes,
+            remainingMinutes
+          });
+        }
       } catch (error) {
-        console.error('Error calculating SLA:', error);
+        console.warn('Error calculating SLA, using fallback:', error);
+        // Fallback calculation if anything fails
+        const createdDate = new Date(cardCreatedAt);
+        const now = new Date();
+        const elapsedMinutes = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60));
+        const targetMinutes = 240; // 4 hours default
+        const remainingMinutes = targetMinutes - elapsedMinutes;
+        
+        let status: 'ok' | 'warning' | 'overdue' = 'ok';
+        if (remainingMinutes < 0) {
+          status = 'overdue';
+        } else if (remainingMinutes < 60) {
+          status = 'warning';
+        }
+        
+        setSla({
+          status,
+          targetMinutes,
+          elapsedMinutes,
+          remainingMinutes
+        });
       } finally {
         setLoading(false);
       }
@@ -66,7 +120,7 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
     const interval = setInterval(calculateSLA, 60000); // Atualizar a cada 1min
 
     return () => clearInterval(interval);
-  }, [cardId, completionType]);
+  }, [cardId, cardCreatedAt, completionType]);
 
   if (loading) return null;
 
@@ -114,7 +168,7 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
       variant: 'destructive' as const, 
       icon: AlertCircle, 
       className: 'bg-red-600 hover:bg-red-700 text-white',
-      label: `SLA: +${formatTimeUnit(sla.elapsedMinutes - sla.targetMinutes)}`
+      label: `SLA: +${formatTimeUnit(Math.abs(sla.remainingMinutes))}`
     }
   };
 

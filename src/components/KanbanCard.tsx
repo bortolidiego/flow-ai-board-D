@@ -8,12 +8,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+
 interface CustomField {
   id: string;
   field_name: string;
   field_label: string;
   field_type: string;
 }
+
 interface PipelineConfig {
   customFields: CustomField[];
   funnelTypes?: any[];
@@ -21,6 +23,7 @@ interface PipelineConfig {
     id: string;
   };
 }
+
 interface KanbanCardProps {
   id: string;
   title: string;
@@ -60,6 +63,7 @@ interface KanbanCardProps {
   isMonetaryLocked?: boolean;
   lastActivityAt?: string | null;
 }
+
 export const KanbanCard = ({
   id,
   title,
@@ -361,13 +365,15 @@ export const KanbanCard = ({
               <span className="truncate">{assignee}</span>
             </div> : <div />}
           <div className="flex items-center gap-2">
-            {/* SLA Badge */}
-            <SLABadge 
-              cardId={id}
-              cardCreatedAt={createdAt}
-              completionType={completionType}
-              className={isMobile ? "text-sm" : "text-xs"}
-            />
+            {/* SLA Badge - with error handling */}
+            <div className="flex items-center">
+              <SLABadge 
+                cardId={id}
+                cardCreatedAt={createdAt}
+                completionType={completionType}
+                className={isMobile ? "text-sm" : "text-xs"}
+              />
+            </div>
             
             {/* Badge de cliente retornando */}
             {customerProfileId && (
