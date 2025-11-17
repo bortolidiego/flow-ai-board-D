@@ -1,10 +1,8 @@
-"use client";
-
 import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { KanbanCard } from './KanbanCard';
-import { Plus, ChevronDown, DollarSign } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -68,7 +66,7 @@ export const KanbanColumn = ({
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isMobile = useIsMobile();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(!isMobile); // Começa expandido no desktop, retraído no mobile
 
   const allColumnCardsSelected = cards.length > 0 && cards.every(card => selectedCardIds.has(card.id));
   const someColumnCardsSelected = cards.some(card => selectedCardIds.has(card.id)) && !allColumnCardsSelected;
@@ -78,11 +76,12 @@ export const KanbanColumn = ({
     onSelectAllColumn?.(id);
   };
 
-  // Calculate column total value
+  // Calcular o totalizador de valores da coluna
   const columnTotal = cards.reduce((sum, card) => {
     return sum + (card.value || 0);
   }, 0);
 
+  // Formatar o valor para exibição
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -91,112 +90,110 @@ export const KanbanColumn = ({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[420px]">
-      {/* Full height Collapsible container */}
-      <Collapsible 
-        open={isOpen} 
-        onOpenChange={setIsOpen}
-        className="flex flex-col h-full min-h-0"
-      >
-        {/* Header - Always visible */}
-        <CollapsibleTrigger asChild>
-          <div 
-            className={cn(
-              "flex items-center justify-between p-3 border-b border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card transition-all group cursor-pointer",
-              isMobile && "rounded-t-lg"
+    <Collapsible
+      open={isMobile ? isOpen : true}
+      onOpenChange={isMobile ? setIsOpen : undefined}
+      className={cn(
+        "flex flex-col gap-3",
+        isMobile ? "w-full" : "w-[350px] min-w-[350px]"
+      )}
+    >
+      <CollapsibleTrigger asChild>
+        <div 
+          className={cn(
+            "flex items-center justify-between cursor-pointer rounded-lg transition-all",
+            isMobile ? "px-3 py-3 bg-card/50 border border-border/50 hover:bg-card/70 active:scale-[0.98]" : "px-2 cursor-default",
+            isMobile && isOpen && "bg-primary/10 border-primary/30"
+          )}
+          onClick={(e) => {
+            if (!isMobile) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+        >
+          <div className="flex items-center gap-2">
+            {selectionMode && (
+              <Checkbox
+                checked={allColumnCardsSelected}
+                onCheckedChange={handleSelectAll}
+                className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")}
+                data-state={someColumnCardsSelected ? 'indeterminate' : undefined}
+                onClick={(e) => e.stopPropagation()}
+              />
             )}
-          >
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              {selectionMode && (
-                <Checkbox
-                  checked={allColumnCardsSelected}
-                  onCheckedChange={handleSelectAll}
-                  className="h-4 w-4 flex-shrink-0"
-                  data-state={someColumnCardsSelected ? 'indeterminate' : undefined}
-                />
+            <div className="flex flex-col gap-1">
+              <h2 className={cn("font-semibold text-foreground", isMobile && "text-base")}>{title}</h2>
+              {columnTotal > 0 && (
+                <div className={cn(
+                  "flex items-center gap-1 text-xs font-medium",
+                  isMobile ? "text-sm" : "text-xs"
+                )}>
+                  <DollarSign className={cn("h-3 w-3", isMobile && "h-4 w-4")} />
+                  <span className="text-green-600 dark:text-green-400">
+                    {formatCurrency(columnTotal)}
+                  </span>
+                </div>
               )}
-              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                <h2 className="font-semibold text-sm truncate leading-tight">{title}</h2>
-                {columnTotal > 0 && (
-                  <div className="flex items-center gap-1 text-xs font-medium text-green-600">
-                    <DollarSign className="h-3 w-3" />
-                    <span>{formatCurrency(columnTotal)}</span>
-                  </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground", isMobile ? "text-sm" : "text-xs")}>
+                {count}
+              </span>
+              {selectionMode && selectedInColumnCount > 0 && (
+                <span className={cn("px-2 py-0.5 font-medium rounded-full bg-primary text-primary-foreground", isMobile ? "text-sm" : "text-xs")}>
+                  {selectedInColumnCount}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {!selectionMode && !isMobile && (
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
+            {isMobile && (
+              <div className={cn(
+                "flex items-center justify-center rounded-md transition-all",
+                "bg-primary/20 text-primary",
+                isMobile ? "h-8 w-8" : "h-6 w-6"
+              )}>
+                {isOpen ? (
+                  <ChevronUp className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
+                ) : (
+                  <ChevronDown className={cn(isMobile ? "h-5 w-5" : "h-4 w-4")} />
                 )}
               </div>
-            </div>
-            <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-              <span className={cn(
-                "px-2 py-0.5 font-medium rounded-full text-xs bg-muted/80",
-                selectedInColumnCount > 0 && "bg-primary text-primary-foreground"
-              )}>
-                {selectedInColumnCount || count}
-              </span>
-              {isMobile && (
-                <div className={cn(
-                  "p-1 rounded-full transition-transform group-data-[state=open]:rotate-180",
-                  "data-[state=open]:rotate-180"
-                )}>
-                  <ChevronDown className="h-4 w-4" />
-                </div>
-              )}
-            </div>
-          </div>
-        </CollapsibleTrigger>
-
-        {/* Desktop Add Button - Always visible header section */}
-        {!isMobile && !selectionMode && (
-          <div className="p-2 bg-muted/50 border-t border-border/30">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-8 w-full text-xs justify-center hover:bg-primary/10"
-            >
-              <Plus className="h-3 w-3 mr-1.5" />
-              Novo Card
-            </Button>
-          </div>
-        )}
-
-        {/* Cards Container - Collapsible content with full remaining height */}
-        <CollapsibleContent className="flex-1 min-h-0 overflow-hidden">
-          <div
-            ref={setNodeRef}
-            className={cn(
-              "flex-1 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent p-2 space-y-2",
-              isOver && "bg-primary/10 ring-2 ring-primary/20",
-              isMobile ? "pb-20 pt-1" : "pb-4 pt-1"
             )}
-          >
-            <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
-              {cards.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center py-12 text-muted-foreground min-h-[200px]">
-                  <div className="w-12 h-12 mb-3 rounded-xl bg-muted flex items-center justify-center">
-                    <Plus className="w-6 h-6" />
-                  </div>
-                  <p className="text-sm font-medium mb-1">Nenhum card</p>
-                  <p className="text-xs">Adicione o primeiro card aqui</p>
-                </div>
-              ) : (
-                cards.map((card) => (
-                  <KanbanCard
-                    key={card.id}
-                    {...card}
-                    onCardClick={() => onCardClick?.(card.id)}
-                    pipelineConfig={pipelineConfig}
-                    selectionMode={selectionMode}
-                    isSelected={selectedCardIds.has(card.id)}
-                    onSelectToggle={() => onSelectCard?.(card.id)}
-                  />
-                ))
-              )}
-            </SortableContext>
-            
-            {/* Bottom padding for smooth scrolling */}
-            <div className="h-8 flex-shrink-0" />
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-    </div>
+        </div>
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div
+          ref={setNodeRef}
+          className={cn(
+            "flex-1 rounded-lg space-y-2 transition-colors backdrop-blur-sm border border-border/30",
+            isMobile ? "p-3 min-h-[300px]" : "p-2 h-[calc(100vh-280px)]",
+            isOver ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-card/30'
+          )}
+        >
+          <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
+            {cards.map((card) => (
+              <KanbanCard
+                key={card.id}
+                {...card}
+                onCardClick={() => onCardClick?.(card.id)}
+                pipelineConfig={pipelineConfig}
+                selectionMode={selectionMode}
+                isSelected={selectedCardIds.has(card.id)}
+                onSelectToggle={() => onSelectCard?.(card.id)}
+              />
+            ))}
+          </SortableContext>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 };

@@ -19,39 +19,9 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { KanbanFilters as KanbanFiltersType, SortOption, QuickFilter } from '@/types/kanbanFilters';
+import { Card } from '@/hooks/useKanbanData';
 import { cn } from '@/lib/utils';
-
-// Define types directly since imports were causing issues
-type SortOption = string;
-interface QuickFilter {
-  id: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  apply: (filters: any) => any;
-}
-interface Card {
-  priority?: string;
-  assignee?: string;
-  funnelType?: string;
-  productItem?: string;
-  inboxName?: string;
-  currentLifecycleStage?: string;
-}
-
-interface KanbanFiltersType {
-  search: string;
-  priority: string[];
-  assignee: string[];
-  funnelType: string[];
-  isUnassigned: boolean | null;
-  valueRange: { min: number; max: number } | null;
-  productItem: string[];
-  isReturningCustomer: boolean | null;
-  inactivityDays: number | null;
-  lifecycleStages: string[];
-  progressRange: { min: number; max: number } | null;
-  isMonetaryLocked: boolean | null;
-}
 
 interface KanbanFiltersProps {
   filters: KanbanFiltersType;
@@ -134,7 +104,7 @@ export const KanbanFilters = ({
   const handleQuickFilter = (filter: QuickFilter) => {
     const newFilters = filter.apply(filters);
     Object.entries(newFilters).forEach(([key, value]) => {
-      updateFilter(key as keyof KanbanFiltersType, value as KanbanFiltersType[keyof KanbanFiltersType]);
+      updateFilter(key as keyof KanbanFiltersType, value);
     });
   };
 
@@ -223,13 +193,13 @@ export const KanbanFilters = ({
                       <div className="grid grid-cols-2 gap-2">
                         {uniqueValues.funnelTypes.map(type => (
                           <Button
-                            key={type || 'empty-funnel-type'}
-                            variant={filters.funnelType.includes(type || '') ? "default" : "outline"}
+                            key={type}
+                            variant={filters.funnelType.includes(type) ? "default" : "outline"}
                             size="sm"
-                            onClick={() => toggleArrayFilter('funnelType', type || '')}
+                            onClick={() => toggleArrayFilter('funnelType', type)}
                             className="justify-start text-xs h-8"
                           >
-                            {type || 'Sem tipo'}
+                            {type}
                           </Button>
                         ))}
                       </div>
@@ -241,21 +211,16 @@ export const KanbanFilters = ({
                     <div className="space-y-2">
                       <Label className="text-xs">Etapa Atual</Label>
                       <Select
-                        value={filters.lifecycleStages[0] || 'all-stages'}
-                        onValueChange={(value) => updateFilter('lifecycleStages', value === 'all-stages' ? [] : [value])}
+                        value={filters.lifecycleStages[0] || ''}
+                        onValueChange={(value) => updateFilter('lifecycleStages', value ? [value] : [])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Todas as etapas" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all-stages">Todas</SelectItem>
+                          <SelectItem value="">Todas</SelectItem>
                           {uniqueValues.lifecycleStages.map(stage => (
-                            <SelectItem 
-                              key={stage || 'empty-stage'} 
-                              value={stage || 'empty-stage-value'}
-                            >
-                              {stage || 'Sem etapa'}
-                            </SelectItem>
+                            <SelectItem key={stage} value={stage}>{stage}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -320,13 +285,13 @@ export const KanbanFilters = ({
                       <div className="flex gap-2">
                         {uniqueValues.priorities.map(p => (
                           <Button
-                            key={p || 'empty-priority'}
-                            variant={filters.priority.includes(p || '') ? "default" : "outline"}
+                            key={p}
+                            variant={filters.priority.includes(p) ? "default" : "outline"}
                             size="sm"
-                            onClick={() => toggleArrayFilter('priority', p || '')}
+                            onClick={() => toggleArrayFilter('priority', p)}
                             className="text-xs h-8"
                           >
-                            {p === 'high' ? '🔴 Alta' : p === 'medium' ? '🟡 Média' : p === 'low' ? '🟢 Baixa' : p || 'Sem prioridade'}
+                            {p === 'high' ? '🔴 Alta' : p === 'medium' ? '🟡 Média' : '🟢 Baixa'}
                           </Button>
                         ))}
                       </div>
@@ -338,21 +303,16 @@ export const KanbanFilters = ({
                     <div className="space-y-2">
                       <Label className="text-xs">Atendente</Label>
                       <Select
-                        value={filters.assignee[0] || 'all-assignees'}
-                        onValueChange={(value) => updateFilter('assignee', value === 'all-assignees' ? [] : [value])}
+                        value={filters.assignee[0] || ''}
+                        onValueChange={(value) => updateFilter('assignee', value ? [value] : [])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Todos" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all-assignees">Todos</SelectItem>
+                          <SelectItem value="">Todos</SelectItem>
                           {uniqueValues.assignees.map(a => (
-                            <SelectItem 
-                              key={a || 'unassigned'} 
-                              value={a || 'unassigned-value'}
-                            >
-                              {a || 'Sem atendente'}
-                            </SelectItem>
+                            <SelectItem key={a} value={a}>{a}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -407,21 +367,16 @@ export const KanbanFilters = ({
                     <div className="space-y-2">
                       <Label className="text-xs">Produto/Serviço</Label>
                       <Select
-                        value={filters.productItem[0] || 'all-products'}
-                        onValueChange={(value) => updateFilter('productItem', value === 'all-products' ? [] : [value])}
+                        value={filters.productItem[0] || ''}
+                        onValueChange={(value) => updateFilter('productItem', value ? [value] : [])}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Todos" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all-products">Todos</SelectItem>
+                          <SelectItem value="">Todos</SelectItem>
                           {uniqueValues.products.map(p => (
-                            <SelectItem 
-                              key={p || 'empty-product'} 
-                              value={p || 'empty-product-value'}
-                            >
-                              {p || 'Sem produto'}
-                            </SelectItem>
+                            <SelectItem key={p} value={p}>{p}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -489,8 +444,8 @@ export const KanbanFilters = ({
             </SelectTrigger>
             <SelectContent>
               {savedViews.map(view => (
-                <SelectItem key={view.id || 'empty-view-id'} value={view.id || 'empty-view-id'}>
-                  {view.name || 'Visão sem nome'}
+                <SelectItem key={view.id} value={view.id}>
+                  {view.name}
                 </SelectItem>
               ))}
             </SelectContent>
