@@ -316,7 +316,7 @@ export default function KanbanBoard() {
   
   // Active filters count - explicitly typed as number
   const activeFiltersCount: number = useMemo(() => {
-    return Object.values(filters).reduce((count: number, value) => {
+    return Object.values(filters).reduce((count, value) => {
       if (Array.isArray(value)) {
         return count + (value.length > 0 ? 1 : 0);
       }
