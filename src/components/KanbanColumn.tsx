@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { KanbanCard } from './KanbanCard';
-import { Plus, ChevronDown, ChevronUp, DollarSign } from 'lucide-react';
+import { Plus, ChevronDown, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -68,7 +68,7 @@ export const KanbanColumn = ({
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isMobile = useIsMobile();
-  const [isOpen, setIsOpen] = useState(true); // Always open on desktop, collapsible on mobile
+  const [isOpen, setIsOpen] = useState(true);
 
   const allColumnCardsSelected = cards.length > 0 && cards.every(card => selectedCardIds.has(card.id));
   const someColumnCardsSelected = cards.some(card => selectedCardIds.has(card.id)) && !allColumnCardsSelected;
@@ -91,23 +91,19 @@ export const KanbanColumn = ({
   };
 
   return (
-    <div className={cn(
-      "flex flex-col h-full min-h-0", // Full height flex container
-      isMobile ? "w-full" : "flex-1 min-w-[280px] max-w-[420px]"
-    )}>
-      {/* Column Header - Fixed minimal height */}
+    <div className="flex flex-col h-full min-h-0 w-full lg:flex-1 lg:min-w-[280px] lg:max-w-[420px]">
+      {/* Full height Collapsible container */}
       <Collapsible 
         open={isOpen} 
         onOpenChange={setIsOpen}
-        className="flex flex-col flex-0"
+        className="flex flex-col h-full min-h-0"
       >
+        {/* Header - Always visible */}
         <CollapsibleTrigger asChild>
           <div 
             className={cn(
-              "flex items-center justify-between p-3 rounded-t-lg border-b border-border/50 cursor-pointer transition-all group",
-              isMobile 
-                ? "bg-card hover:bg-muted/50" 
-                : "bg-card/80 backdrop-blur-sm hover:bg-card"
+              "flex items-center justify-between p-3 border-b border-border/50 bg-card/80 backdrop-blur-sm hover:bg-card transition-all group cursor-pointer",
+              isMobile && "rounded-t-lg"
             )}
           >
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -138,8 +134,8 @@ export const KanbanColumn = ({
               </span>
               {isMobile && (
                 <div className={cn(
-                  "p-1 rounded-full transition-transform",
-                  isOpen ? "rotate-180" : ""
+                  "p-1 rounded-full transition-transform group-data-[state=open]:rotate-180",
+                  "data-[state=open]:rotate-180"
                 )}>
                   <ChevronDown className="h-4 w-4" />
                 </div>
@@ -148,7 +144,7 @@ export const KanbanColumn = ({
           </div>
         </CollapsibleTrigger>
 
-        {/* Header Add Button - Desktop only */}
+        {/* Desktop Add Button - Always visible header section */}
         {!isMobile && !selectionMode && (
           <div className="p-2 bg-muted/50 border-t border-border/30">
             <Button 
@@ -161,46 +157,46 @@ export const KanbanColumn = ({
             </Button>
           </div>
         )}
-      </Collapsible>
 
-      {/* Cards Container - Takes all remaining space */}
-      <CollapsibleContent className="flex-1 min-h-0 overflow-hidden">
-        <div
-          ref={setNodeRef}
-          className={cn(
-            "flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent p-2 space-y-2",
-            isOver && "bg-primary/10 ring-2 ring-primary/20",
-            isMobile ? "pb-20" : "pb-4" // Extra padding on mobile for FAB
-          )}
-        >
-          <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
-            {cards.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center py-8 text-muted-foreground">
-                <div className="w-12 h-12 mb-3 rounded-xl bg-muted flex items-center justify-center">
-                  <Plus className="w-6 h-6" />
-                </div>
-                <p className="text-sm font-medium mb-1">Nenhum card</p>
-                <p className="text-xs">Adicione o primeiro card aqui</p>
-              </div>
-            ) : (
-              cards.map((card) => (
-                <KanbanCard
-                  key={card.id}
-                  {...card}
-                  onCardClick={() => onCardClick?.(card.id)}
-                  pipelineConfig={pipelineConfig}
-                  selectionMode={selectionMode}
-                  isSelected={selectedCardIds.has(card.id)}
-                  onSelectToggle={() => onSelectCard?.(card.id)}
-                />
-              ))
+        {/* Cards Container - Collapsible content with full remaining height */}
+        <CollapsibleContent className="flex-1 min-h-0 overflow-hidden">
+          <div
+            ref={setNodeRef}
+            className={cn(
+              "flex-1 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent p-2 space-y-2",
+              isOver && "bg-primary/10 ring-2 ring-primary/20",
+              isMobile ? "pb-20 pt-1" : "pb-4 pt-1"
             )}
-          </SortableContext>
-          
-          {/* Empty space filler for smooth scrolling */}
-          <div className="h-8" />
-        </div>
-      </CollapsibleContent>
+          >
+            <SortableContext items={cards.map(c => c.id)} strategy={verticalListSortingStrategy}>
+              {cards.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center py-12 text-muted-foreground min-h-[200px]">
+                  <div className="w-12 h-12 mb-3 rounded-xl bg-muted flex items-center justify-center">
+                    <Plus className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-medium mb-1">Nenhum card</p>
+                  <p className="text-xs">Adicione o primeiro card aqui</p>
+                </div>
+              ) : (
+                cards.map((card) => (
+                  <KanbanCard
+                    key={card.id}
+                    {...card}
+                    onCardClick={() => onCardClick?.(card.id)}
+                    pipelineConfig={pipelineConfig}
+                    selectionMode={selectionMode}
+                    isSelected={selectedCardIds.has(card.id)}
+                    onSelectToggle={() => onSelectCard?.(card.id)}
+                  />
+                ))
+              )}
+            </SortableContext>
+            
+            {/* Bottom padding for smooth scrolling */}
+            <div className="h-8 flex-shrink-0" />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 };
