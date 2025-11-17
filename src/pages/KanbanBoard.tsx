@@ -10,9 +10,11 @@ import { CardDetailDialog } from '@/components/CardDetailDialog';
 import { useKanbanData } from '@/hooks/useKanbanData';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, AlertTriangle, Settings } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useUserRole } from '@/hooks/useUserRole';
+import { useNavigate } from 'react-router-dom';
+import { Card as UICard, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Define types directly since imports were causing issues
 interface Card {
@@ -86,19 +88,18 @@ interface KanbanFiltersType {
 
 
 export default function KanbanBoard() {
-  const { workspace } = useWorkspace();
+  const { workspace, loading: workspaceLoading } = useWorkspace();
   const { isAdmin } = useUserRole();
   const isMobile = useIsMobile();
-  // Note: Removed sensors since it's not available in useDndContext return value
+  const navigate = useNavigate();
   
   // Data hooks
   const {
     cards,
     pipeline,
     pipelineConfig,
-    loading,
+    loading: kanbanLoading,
     refreshCards,
-    // Note: Removed non-existent properties from destructuring
   } = useKanbanData();
   
   // Extract columns from pipeline
@@ -377,10 +378,37 @@ export default function KanbanBoard() {
     }, 0) as number;
   }, [filters]);
   
+  const loading = workspaceLoading || kanbanLoading;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Se o workspace carregou, mas não há pipeline, sugerir provisionamento
+  if (workspace && !pipeline) {
+    return (
+      <div className="flex items-center justify-center h-full p-8">
+        <UICard className="w-full max-w-lg text-center">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-center gap-2 text-xl">
+              <AlertTriangle className="w-6 h-6 text-amber-500" />
+              Pipeline não configurada
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">
+              Parece que você ainda não configurou a pipeline para este workspace.
+            </p>
+            <Button onClick={() => navigate('/provision')} className="gap-2">
+              <Settings className="w-4 h-4" />
+              Configurar Pipeline
+            </Button>
+          </CardContent>
+        </UICard>
       </div>
     );
   }
