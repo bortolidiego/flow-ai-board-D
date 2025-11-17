@@ -31,6 +31,7 @@ const Brain = () => {
   const [funnelTypes, setFunnelTypes] = useState<any[]>([]);
   const [aiConfig, setAiConfig] = useState<any>(null);
   const [chatwootIntegration, setChatwootIntegration] = useState<any>(null);
+  const [evolutionIntegration, setEvolutionIntegration] = useState<any>(null);
   const [workspaceName, setWorkspaceName] = useState('');
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -48,8 +49,52 @@ const Brain = () => {
       loadFunnelTypes();
       loadAiConfig();
       loadChatwootIntegration();
+      loadEvolutionIntegration();
     }
   }, [pipeline]);
+
+  useEffect(() => {
+    if (!pipeline?.id) return;
+
+    // Realtime sync for Evolution integration
+    const evolutionChannel = supabase
+      .channel(`evolution:${pipeline.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'evolution_integrations',
+          filter: `pipeline_id=eq.${pipeline.id}`,
+        },
+        () => {
+          loadEvolutionIntegration();
+        }
+      )
+      .subscribe();
+
+    // Realtime sync for Chatwoot integration
+    const chatwootChannel = supabase
+      .channel(`chatwoot:${pipeline.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chatwoot_integrations',
+          filter: `pipeline_id=eq.${pipeline.id}`,
+        },
+        () => {
+          loadChatwootIntegration();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(evolutionChannel);
+      supabase.removeChannel(chatwootChannel);
+    };
+  }, [pipeline?.id]);
 
   const handleUpdateWorkspaceName = async () => {
     if (!workspace || workspaceName === workspace.name) return;
@@ -153,9 +198,34 @@ const Brain = () => {
     }
   };
 
+  const loadEvolutionIntegration = async () => {
+    if (!pipeline) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('evolution_integrations')
+        .select('*')
+        .eq('pipeline_id', pipeline.id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      setEvolutionIntegration(data);
+    } catch (error) {
+      console.error('Error loading Evolution integration:', error);
+    }
+  };
+
   const getChatwootStatus = () => {
     if (!chatwootIntegration) return 'not-configured';
     return chatwootIntegration.active ? 'active' : 'paused';
+  };
+
+  const getEvolutionStatus = () => {
+    if (!evolutionIntegration) return 'not-configured';
+    if (!evolutionIntegration.active) return 'paused';
+    const status = evolutionIntegration.status || 'disconnected';
+    if (status === 'connected') return 'active';
+    return 'paused';
   };
 
   if (workspaceLoading || loading) {
@@ -189,6 +259,27 @@ const Brain = () => {
         </div>
       </div>
     );
+  }
+
+  // Compute Evolution UI classes directly for distinction
+  let evolutionBorderClass = 'border-muted';
+  let evolutionIconClass = 'text-muted-foreground';
+  let evolutionBadgeStatus = 'not-configured';
+  if (evolutionIntegration) {
+    if (evolutionIntegration.active && evolutionIntegration.status === 'connected') {
+      evolutionBorderClass = 'border-primary/20';
+      evolutionIconClass = 'text-primary';
+      evolutionBadgeStatus = 'active';
+    } else if (!evolutionIntegration.active) {
+      evolutionBorderClass = 'border-orange-500/20';
+      evolutionIconClass = 'text-orange-500';
+      evolutionBadgeStatus = 'paused';
+    } else {
+      // active but disconnected
+      evolutionBorderClass = 'border-destructive/20';
+      evolutionIconClass = 'text-destructive';
+      evolutionBadgeStatus = 'paused';
+    }
   }
 
   return (
@@ -231,7 +322,7 @@ const Brain = () => {
         </div>
 
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <Card className="border-primary/20">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -312,6 +403,18 @@ const Brain = () => {
                       ? 'text-orange-500'
                       : 'text-muted-foreground'
                   }`} />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className={evolutionBorderClass}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">WhatsApp (Evolution)</p>
+                    <IntegrationStatusBadge status={evolutionBadgeStatus} size="sm" />
+                  </div>
+                  <MessageSquare className={`w-8 h-8 ${evolutionIconClass}`} />
                 </div>
               </CardContent>
             </Card>
