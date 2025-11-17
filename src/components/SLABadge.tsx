@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Clock, AlertTriangle, AlertCircle, CheckCircle2, XCircle, CheckCheck } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 interface SLABadgeProps {
@@ -47,48 +46,29 @@ export function SLABadge({ cardId, cardCreatedAt, completionType, className }: S
       return;
     }
 
-    const calculateSLA = async () => {
+    const calculateSLA = () => {
       try {
-        // First try to get SLA from card data directly
-        const { data: cardData, error: cardError } = await supabase
-          .from('cards')
-          .select('sla_status, sla_target_minutes, sla_elapsed_minutes, sla_remaining_minutes')
-          .eq('id', cardId)
-          .single();
-
-        if (cardError) throw cardError;
-
-        // If SLA data exists on card, use it
-        if (cardData.sla_status) {
-          setSla({
-            status: cardData.sla_status,
-            targetMinutes: cardData.sla_target_minutes,
-            elapsedMinutes: cardData.sla_elapsed_minutes,
-            remainingMinutes: cardData.sla_remaining_minutes
-          });
-        } else {
-          // Fallback to local calculation if no SLA data on card
-          const createdDate = new Date(cardCreatedAt);
-          const now = new Date();
-          const elapsedMinutes = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60));
-          // Default SLA target of 4 hours (240 minutes)
-          const targetMinutes = 240;
-          const remainingMinutes = targetMinutes - elapsedMinutes;
-          
-          let status: 'ok' | 'warning' | 'overdue' = 'ok';
-          if (remainingMinutes < 0) {
-            status = 'overdue';
-          } else if (remainingMinutes < 60) {
-            status = 'warning';
-          }
-          
-          setSla({
-            status,
-            targetMinutes,
-            elapsedMinutes,
-            remainingMinutes
-          });
+        // Use only local calculation since SLA columns don't exist in database
+        const createdDate = new Date(cardCreatedAt);
+        const now = new Date();
+        const elapsedMinutes = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60));
+        // Default SLA target of 4 hours (240 minutes)
+        const targetMinutes = 240;
+        const remainingMinutes = targetMinutes - elapsedMinutes;
+        
+        let status: 'ok' | 'warning' | 'overdue' = 'ok';
+        if (remainingMinutes < 0) {
+          status = 'overdue';
+        } else if (remainingMinutes < 60) {
+          status = 'warning';
         }
+        
+        setSla({
+          status,
+          targetMinutes,
+          elapsedMinutes,
+          remainingMinutes
+        });
       } catch (error) {
         console.warn('Error calculating SLA, using fallback:', error);
         // Fallback calculation if anything fails
