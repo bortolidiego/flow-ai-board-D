@@ -315,13 +315,14 @@ export default function KanbanBoard() {
   }, []);
   
   // Active filters count - explicitly typed as number
-  const activeFiltersCount: number = useMemo(() => {
-    return Object.values(filters).reduce((count, value) => {
+  const activeFiltersCount: number = useMemo((): number => {
+    return Object.values(filters).reduce((count: number, value): number => {
+      // Type guard to ensure we're working with compatible types
       if (Array.isArray(value)) {
         return count + (value.length > 0 ? 1 : 0);
       }
-      // Type guard to ensure we're working with comparable values
-      if (value !== null && value !== undefined && value !== '') {
+      // Check for non-empty values that are not objects
+      if (value !== null && value !== undefined && value !== '' && typeof value !== 'object') {
         return count + 1;
       }
       return count;
