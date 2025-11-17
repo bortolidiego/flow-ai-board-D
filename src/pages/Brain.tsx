@@ -1,544 +1,377 @@
+"use client";
+
 import { useState, useEffect } from 'react';
-import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, AlertCircle, Building2, Plug, MessageSquare } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, Zap, MessageSquare } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { useWorkspace } from '@/hooks/useWorkspace';
-import { useUserRole } from '@/hooks/useUserRole';
-import { useKanbanData } from '@/hooks/useKanbanData';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { PipelineStagesManager } from '@/components/PipelineStagesManager';
 import { CustomFieldsManager } from '@/components/CustomFieldsManager';
+import { FunnelTypesManager } from '@/components/FunnelTypesManager';
 import { FunnelLifecycleManager } from '@/components/FunnelLifecycleManager';
-import { MovementRulesManager } from '@/components/MovementRulesManager';
-import { InactivityRulesManager } from '@/components/InactivityRulesManager';
 import { AIPromptBuilder } from '@/components/AIPromptBuilder';
+import { CardMovementRulesManager } from '@/components/CardMovementRulesManager';
+import { InactivityRulesManager } from '@/components/InactivityRulesManager';
+import { MovementRulesManager } from '@/components/MovementRulesManager';
 import { ChatwootSettings } from '@/components/ChatwootSettings';
 import { EvolutionSettings } from '@/components/EvolutionSettings';
 import { IntegrationStatusBadge } from '@/components/IntegrationStatusBadge';
-import { Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 
-const Brain = () => {
-  const { workspace, loading: workspaceLoading, updateWorkspaceName } = useWorkspace();
-  const { isAdmin } = useUserRole();
-  const { pipeline, loading, fetchPipeline } = useKanbanData(workspace?.id);
-  const [customFields, setCustomFields] = useState<any[]>([]);
-  const [templateInfo, setTemplateInfo] = useState<any>(null);
-  const [funnelTypes, setFunnelTypes] = useState<any[]>([]);
-  const [aiConfig, setAiConfig] = useState<any>(null);
-  const [chatwootIntegration, setChatwootIntegration] = useState<any>(null);
-  const [evolutionIntegration, setEvolutionIntegration] = useState<any>(null);
-  const [workspaceName, setWorkspaceName] = useState('');
-  const navigate = useNavigate();
+interface Column {
+  id: string;
+  name: string;
+  position: number;
+}
+
+// Updated CustomField interface to match the expected type
+interface CustomField {
+  id: string;
+  field_name: string;
+  field_label: string;
+  field_type: "number" | "select" | "text" | "date" | "email" | "phone";
+  is_required: boolean;
+}
+
+interface FunnelType {
+  id: string;
+  funnel_type: string;
+  funnel_name: string;
+  color: string;
+  is_monetary: boolean;
+  priority: number;
+  lifecycle_stages: any[];
+}
+
+export default function Brain() {
+  const [activeTab, setActiveTab] = useState('pipeline');
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [columns, setColumns] = useState<Column[]>([]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [funnelTypes, setFunnelTypes] = useState<FunnelType[]>([]);
+  const [hasChatwootIntegration, setHasChatwootIntegration] = useState(false);
+  const [hasEvolutionIntegration, setHasEvolutionIntegration] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (workspace) {
-      setWorkspaceName(workspace.name);
-    }
-  }, [workspace]);
+    initializeWorkspace();
+  }, []);
 
-  useEffect(() => {
-    if (pipeline) {
-      loadCustomFields();
-      loadTemplateInfo();
-      loadFunnelTypes();
-      loadAiConfig();
-      loadChatwootIntegration();
-      loadEvolutionIntegration();
-    }
-  }, [pipeline]);
+  const initializeWorkspace = async () => {
+    try {
+      // Get user's workspace
+      const { data: workspaceData, error: workspaceError } = await supabase
+        .from('workspaces')
+        .select('id')
+        .limit(1)
+        .single();
 
-  useEffect(() => {
-    if (!pipeline?.id) return;
+      if (workspaceError) throw workspaceError;
+      setWorkspaceId(workspaceData.id);
 
-    // Realtime sync for Evolution integration
-    const evolutionChannel = supabase
-      .channel(`evolution:${pipeline.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'evolution_integrations',
-          filter: `pipeline_id=eq.${pipeline.id}`,
-        },
-        () => {
-          loadEvolutionIntegration();
-        }
-      )
-      .subscribe();
+      // Get or create pipeline
+      let pipelineData;
+      const { data: existingPipeline, error: pipelineError } = await supabase
+        .from('pipelines')
+        .select('id')
+        .eq('workspace_id', workspaceData.id)
+        .limit(1)
+        .maybeSingle();
 
-    // Realtime sync for Chatwoot integration
-    const chatwootChannel = supabase
-      .channel(`chatwoot:${pipeline.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chatwoot_integrations',
-          filter: `pipeline_id=eq.${pipeline.id}`,
-        },
-        () => {
-          loadChatwootIntegration();
-        }
-      )
-      .subscribe();
+      if (pipelineError) throw pipelineError;
 
-    return () => {
-      supabase.removeChannel(evolutionChannel);
-      supabase.removeChannel(chatwootChannel);
-    };
-  }, [pipeline?.id]);
+      if (existingPipeline) {
+        pipelineData = existingPipeline;
+      } else {
+        const { data: newPipeline, error: createError } = await supabase
+          .from('pipelines')
+          .insert({ workspace_id: workspaceData.id })
+          .select()
+          .single();
 
-  const handleUpdateWorkspaceName = async () => {
-    if (!workspace || workspaceName === workspace.name) return;
-    
-    const { error } = await updateWorkspaceName(workspaceName);
-    if (error) {
+        if (createError) throw createError;
+        pipelineData = newPipeline;
+      }
+
+      setPipelineId(pipelineData.id);
+      loadPipelineData(pipelineData.id);
+    } catch (error: any) {
+      console.error('Error initializing workspace:', error);
       toast({
-        title: 'Erro ao atualizar nome',
-        description: error.message,
+        title: 'Erro',
+        description: `Falha ao inicializar workspace: ${error.message}`,
         variant: 'destructive',
       });
-    } else {
+    }
+  };
+
+  const loadPipelineData = async (pipelineId: string) => {
+    try {
+      // Load columns
+      const { data: columnsData, error: columnsError } = await supabase
+        .from('columns')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('position');
+
+      if (columnsError) throw columnsError;
+      setColumns(columnsData || []);
+
+      // Load custom fields
+      const { data: fieldsData, error: fieldsError } = await supabase
+        .from('pipeline_custom_fields')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('position');
+
+      if (fieldsError) throw fieldsError;
+      setCustomFields(fieldsData || []);
+
+      // Load funnel types
+      const { data: funnelData, error: funnelError } = await supabase
+        .from('funnel_config')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .order('position');
+
+      if (funnelError) throw funnelError;
+      setFunnelTypes(funnelData || []);
+
+      // Check integrations
+      const { data: chatwootData } = await supabase
+        .from('chatwoot_integrations')
+        .select('id')
+        .eq('pipeline_id', pipelineId)
+        .maybeSingle();
+
+      setHasChatwootIntegration(!!chatwootData);
+
+      const { data: evolutionData } = await supabase
+        .from('evolution_integrations')
+        .select('id')
+        .eq('pipeline_id', pipelineId)
+        .maybeSingle();
+
+      setHasEvolutionIntegration(!!evolutionData);
+    } catch (error: any) {
+      console.error('Error loading pipeline data:', error);
       toast({
-        title: 'Nome atualizado',
-        description: 'O nome do workspace foi atualizado com sucesso.',
+        title: 'Erro',
+        description: `Falha ao carregar dados: ${error.message}`,
+        variant: 'destructive',
       });
     }
   };
 
-  const loadCustomFields = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_custom_fields')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .order('position');
-
-      if (error) throw error;
-      setCustomFields(data || []);
-    } catch (error) {
-      console.error('Error loading custom fields:', error);
+  const handlePipelineUpdate = () => {
+    if (pipelineId) {
+      loadPipelineData(pipelineId);
     }
   };
 
-  const loadTemplateInfo = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_behaviors')
-        .select('*, behavior_templates(*)')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      setTemplateInfo(data);
-    } catch (error) {
-      console.error('Error loading template info:', error);
-    }
-  };
-
-  const loadFunnelTypes = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('funnel_config')
-        .select('*')
-        .eq('pipeline_id', pipeline.id);
-
-      if (error) throw error;
-      setFunnelTypes(data || []);
-    } catch (error) {
-      console.error('Error loading funnel types:', error);
-    }
-  };
-
-  const loadAiConfig = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_ai_config')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      setAiConfig(data);
-    } catch (error) {
-      console.error('Error loading AI config:', error);
-    }
-  };
-
-  const loadChatwootIntegration = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('chatwoot_integrations')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      setChatwootIntegration(data);
-    } catch (error) {
-      console.error('Error loading Chatwoot integration:', error);
-    }
-  };
-
-  const loadEvolutionIntegration = async () => {
-    if (!pipeline) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('evolution_integrations')
-        .select('*')
-        .eq('pipeline_id', pipeline.id)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      setEvolutionIntegration(data);
-    } catch (error) {
-      console.error('Error loading Evolution integration:', error);
-    }
-  };
-
-  const getChatwootStatus = () => {
-    if (!chatwootIntegration) return 'not-configured';
-    return chatwootIntegration.active ? 'active' : 'paused';
-  };
-
-  const getEvolutionStatus = () => {
-    if (!evolutionIntegration) return 'not-configured';
-    if (!evolutionIntegration.active) return 'paused';
-    const status = evolutionIntegration.status || 'disconnected';
-    if (status === 'connected') return 'active';
-    return 'paused';
-  };
-
-  if (workspaceLoading || loading) {
+  if (!pipelineId) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
-  }
-
-  if (!pipeline) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-        <div className="container mx-auto px-6 py-8">
-          <Card className="border-2 border-dashed border-primary/30">
-            <CardContent className="flex flex-col items-center justify-center py-16 px-6">
-              <div className="relative mb-6">
-                <BrainIcon className="w-20 h-20 text-primary/30" />
-                <Sparkles className="w-8 h-8 text-secondary absolute -top-2 -right-2 animate-pulse" />
-              </div>
-              <h2 className="text-2xl font-bold mb-2">Nenhum pipeline configurado</h2>
-              <p className="text-muted-foreground text-center mb-6 max-w-md">
-                Comece criando seu primeiro pipeline usando um template inteligente.
-              </p>
-              <Button onClick={() => navigate('/brain/new')} size="lg" className="gap-2">
-                <Sparkles className="w-5 h-5" />
-                Criar Pipeline
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // Compute Evolution UI classes directly for distinction
-  let evolutionBorderClass = 'border-muted';
-  let evolutionIconClass = 'text-muted-foreground';
-  let evolutionBadgeStatus = 'not-configured';
-  if (evolutionIntegration) {
-    if (evolutionIntegration.active && evolutionIntegration.status === 'connected') {
-      evolutionBorderClass = 'border-primary/20';
-      evolutionIconClass = 'text-primary';
-      evolutionBadgeStatus = 'active';
-    } else if (!evolutionIntegration.active) {
-      evolutionBorderClass = 'border-orange-500/20';
-      evolutionIconClass = 'text-orange-500';
-      evolutionBadgeStatus = 'paused';
-    } else {
-      // active but disconnected
-      evolutionBorderClass = 'border-destructive/20';
-      evolutionIconClass = 'text-destructive';
-      evolutionBadgeStatus = 'paused';
-    }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="container mx-auto px-6 py-8">
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <BrainIcon className="w-10 h-10 text-primary" />
-                <Sparkles className="w-4 h-4 text-secondary absolute -top-1 -right-1 animate-pulse" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-                  AI Brain Configuration
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  Configure como a IA analisa e gerencia seus cards
-                </p>
-              </div>
-            </div>
-            {workspace && (
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-muted-foreground" />
-                {isAdmin ? (
-                  <Input
-                    value={workspaceName}
-                    onChange={(e) => setWorkspaceName(e.target.value)}
-                    onBlur={handleUpdateWorkspaceName}
-                    className="max-w-xs"
-                  />
-                ) : (
-                  <Badge variant="outline" className="text-lg px-3 py-1">
-                    {workspace.name}
-                  </Badge>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-            <Card className="border-primary/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Etapas</p>
-                    <p className="text-2xl font-bold">{pipeline.columns?.length || 0}</p>
-                  </div>
-                  <Columns3 className="w-8 h-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-secondary/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Campos</p>
-                    <p className="text-2xl font-bold">{customFields.length}</p>
-                  </div>
-                  <Database className="w-8 h-8 text-secondary" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-accent/20">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Funis</p>
-                    <p className="text-2xl font-bold">{funnelTypes.length}</p>
-                  </div>
-                  <Target className="w-8 h-8 text-accent" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={aiConfig ? "border-primary/20" : "border-destructive/20"}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">IA Config</p>
-                    <p className="text-sm font-semibold flex items-center gap-1">
-                      {aiConfig ? (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 text-primary" />
-                          Ativo
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="w-4 h-4 text-destructive" />
-                          Inativo
-                        </>
-                      )}
-                    </p>
-                  </div>
-                  <Sparkles className="w-8 h-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={
-              getChatwootStatus() === 'active' 
-                ? "border-primary/20" 
-                : getChatwootStatus() === 'paused'
-                ? "border-orange-500/20"
-                : "border-muted"
-            }>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">Chatwoot</p>
-                    <IntegrationStatusBadge status={getChatwootStatus()} size="sm" />
-                  </div>
-                  <Plug className={`w-8 h-8 ${
-                    getChatwootStatus() === 'active' 
-                      ? 'text-primary' 
-                      : getChatwootStatus() === 'paused'
-                      ? 'text-orange-500'
-                      : 'text-muted-foreground'
-                  }`} />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className={evolutionBorderClass}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">WhatsApp (Evolution)</p>
-                    <IntegrationStatusBadge status={evolutionBadgeStatus} size="sm" />
-                  </div>
-                  <MessageSquare className={`w-8 h-8 ${evolutionIconClass}`} />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {templateInfo && (
-            <Card className="border-primary/30 bg-primary/5">
-              <CardContent className="py-4">
-                <div className="flex items-center gap-3">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-sm font-semibold">
-                      Template: {templateInfo.behavior_templates?.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {templateInfo.behavior_templates?.description}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Tabs defaultValue="stages" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6">
-              <TabsTrigger value="stages" className="flex items-center gap-2">
-                <Columns3 className="w-4 h-4" />
-                Etapas
-              </TabsTrigger>
-              <TabsTrigger value="custom-fields" className="flex items-center gap-2">
-                <Database className="w-4 h-4" />
-                Campos
-              </TabsTrigger>
-              <TabsTrigger value="funnels" className="flex items-center gap-2">
-                <Target className="w-4 h-4" />
-                Funis
-              </TabsTrigger>
-              <TabsTrigger value="card-movement" className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4" />
-                Movimentação
-              </TabsTrigger>
-              <TabsTrigger value="ai-behavior" className="flex items-center gap-2">
-                <Settings className="w-4 h-4" />
-                Comportamento IA
-              </TabsTrigger>
-              <TabsTrigger value="integrations" className="flex items-center gap-2">
-                <Plug className="w-4 h-4" />
-                Integrações
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="stages" className="space-y-4">
-              <PipelineStagesManager 
-                pipelineId={pipeline.id}
-                columns={pipeline.columns || []}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
-
-            <TabsContent value="custom-fields" className="space-y-4">
-              <CustomFieldsManager 
-                pipelineId={pipeline.id}
-                onUpdate={() => {
-                  fetchPipeline();
-                  loadCustomFields();
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="funnels" className="space-y-4">
-              <FunnelLifecycleManager 
-                pipelineId={pipeline.id}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
-
-            <TabsContent value="card-movement" className="space-y-4">
-              <MovementRulesManager
-                pipelineId={pipeline.id}
-                onUpdate={fetchPipeline}
-              />
-              <InactivityRulesManager
-                pipelineId={pipeline.id}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
-
-            <TabsContent value="ai-behavior" className="space-y-4">
-              <AIPromptBuilder
-                pipelineId={pipeline.id}
-                customFields={customFields}
-                onUpdate={fetchPipeline}
-              />
-            </TabsContent>
-
-            <TabsContent value="integrations" className="space-y-4">
-              <Tabs defaultValue="chatwoot">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="chatwoot" className="flex items-center gap-2">
-                    <Plug className="w-4 h-4" />
-                    Chatwoot
-                  </TabsTrigger>
-                  <TabsTrigger value="evolution" className="flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    WhatsApp (Evolution)
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="chatwoot" className="space-y-4 mt-4">
-                  <ChatwootSettings 
-                    pipelineId={pipeline.id}
-                  />
-                </TabsContent>
-                <TabsContent value="evolution" className="space-y-4 mt-4">
-                  <EvolutionSettings 
-                    pipelineId={pipeline.id}
-                  />
-                </TabsContent>
-              </Tabs>
-            </TabsContent>
-          </Tabs>
-        </div>
+    <div className="container mx-auto py-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <BrainIcon className="h-8 w-8 text-primary" />
+        <h1 className="text-3xl font-bold">Brain - Configurações Inteligentes</h1>
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-6">
+          <TabsTrigger value="pipeline" className="flex items-center gap-2">
+            <Columns3 className="h-4 w-4" />
+            <span className="hidden sm:inline">Pipeline</span>
+          </TabsTrigger>
+          <TabsTrigger value="funnels" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            <span className="hidden sm:inline">Funis</span>
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">IA</span>
+          </TabsTrigger>
+          <TabsTrigger value="rules" className="flex items-center gap-2">
+            <GitBranch className="h-4 w-4" />
+            <span className="hidden sm:inline">Regras</span>
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            <span className="hidden sm:inline">Integrações</span>
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Avançado</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pipeline" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <PipelineStagesManager
+              pipelineId={pipelineId}
+              columns={columns}
+              onUpdate={handlePipelineUpdate}
+            />
+            <CustomFieldsManager
+              pipelineId={pipelineId}
+              onUpdate={handlePipelineUpdate}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="funnels" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <FunnelTypesManager
+              pipelineId={pipelineId}
+              onUpdate={handlePipelineUpdate}
+            />
+            <FunnelLifecycleManager
+              pipelineId={pipelineId}
+              onUpdate={handlePipelineUpdate}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="ai" className="space-y-6">
+          <AIPromptBuilder
+            pipelineId={pipelineId}
+            customFields={customFields}
+            onUpdate={handlePipelineUpdate}
+          />
+        </TabsContent>
+
+        <TabsContent value="rules" className="space-y-6">
+          <div className="grid gap-6">
+            <CardMovementRulesManager
+              pipelineId={pipelineId}
+              columns={columns}
+              customFields={customFields}
+              onUpdate={handlePipelineUpdate}
+            />
+            <div className="grid gap-6 md:grid-cols-2">
+              <InactivityRulesManager
+                pipelineId={pipelineId}
+                onUpdate={handlePipelineUpdate}
+              />
+              <MovementRulesManager
+                pipelineId={pipelineId}
+                onUpdate={handlePipelineUpdate}
+              />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                Integrações
+              </CardTitle>
+              <CardDescription>
+                Conecte sua pipeline com outras ferramentas
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5 text-blue-500" />
+                      Chatwoot
+                    </CardTitle>
+                    <CardDescription>
+                      Sincronize conversas do Chatwoot com sua pipeline
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Chatwoot</p>
+                          <p className="text-sm text-muted-foreground">Sistema de atendimento</p>
+                        </div>
+                        <IntegrationStatusBadge 
+                          status={hasChatwootIntegration ? "active" : "not-configured"} 
+                          size="sm" 
+                        />
+                      </div>
+                      <ChatwootSettings pipelineId={pipelineId} />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Zap className="h-5 w-5 text-green-500" />
+                      WhatsApp (Evolution)
+                    </CardTitle>
+                    <CardDescription>
+                      Conecte seu WhatsApp via Evolution API
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">WhatsApp (Evolution)</p>
+                          <IntegrationStatusBadge 
+                            status={hasEvolutionIntegration ? "active" : "not-configured"} 
+                            size="sm" 
+                          />
+                        </div>
+                      </div>
+                      <EvolutionSettings pipelineId={pipelineId} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="advanced" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Configurações Avançadas
+              </CardTitle>
+              <CardDescription>
+                Ajustes finos do comportamento da IA e sistema
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Comportamento Padrão</CardTitle>
+                    <CardDescription>
+                      Configure como a IA deve se comportar por padrão
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      Em desenvolvimento: Templates de comportamento pré-configurados
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
-};
-
-export default Brain;
+}
