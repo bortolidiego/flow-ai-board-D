@@ -388,6 +388,15 @@ export default function KanbanBoard() {
     );
   }
 
+  // Se o workspace carregou e é null, redirecionar para provisionamento
+  if (!workspace && !workspaceLoading) {
+    // Usar useEffect para navegação para evitar side effects durante a renderização
+    useEffect(() => {
+      navigate('/provision');
+    }, [navigate]);
+    return null;
+  }
+
   // Se o workspace carregou, mas não há pipeline, sugerir provisionamento
   if (workspace && !pipeline) {
     return (
