@@ -12,12 +12,16 @@ import { ServiceQualityMeter } from './ServiceQualityMeter';
 import { CardAnalysisTimeline } from './CardAnalysisTimeline';
 import { LifecycleProgressCard } from './LifecycleProgressCard';
 import { FunnelFieldsCard } from './FunnelFieldsCard';
+import { PipelineConfig } from '@/lib/kanban'; // Importando PipelineConfig de lib/kanban
 
+// Removendo a definição local de PipelineConfig para evitar conflito
+/*
 interface PipelineConfig {
   customFields: any[];
   funnelTypes: any[];
   aiConfig?: any;
 }
+*/
 
 interface CardDetailDialogProps {
   cardId: string | null;
