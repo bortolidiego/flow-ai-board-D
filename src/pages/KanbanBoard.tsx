@@ -326,7 +326,7 @@ export default function KanbanBoard() {
         return count + 1;
       }
       return count;
-    }, 0);
+    }, 0) as number;
   }, [filters]);
   
   if (loading) {
