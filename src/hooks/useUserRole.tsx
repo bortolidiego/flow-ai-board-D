@@ -1,81 +1,83 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
 
 interface UserRoleContextType {
   userId: string | null;
-  user: User | null;
   isAdmin: boolean;
   loading: boolean;
+  user: User | null;
 }
 
 const UserRoleContext = createContext<UserRoleContextType | undefined>(undefined);
 
-export function UserRoleProvider({ children }: { children: ReactNode }) {
+interface UserRoleProviderProps {
+  children: ReactNode;
+}
+
+export function UserRoleProvider({ children }: UserRoleProviderProps) {
   const [userId, setUserId] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-        if (session?.user) {
-          loadUserAndRole(session.user);
-        } else {
-          setUserId(null);
-          setUser(null);
-          setIsAdmin(false);
-          setLoading(false);
-        }
-      } else if (event === 'SIGNED_OUT') {
+    const fetchUserAndRole = async (session: any) => {
+      if (!session || !session.user) {
         setUserId(null);
-        setUser(null);
         setIsAdmin(false);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      const currentUser = session.user;
+      setUserId(currentUser.id);
+      setUser(currentUser);
+
+      try {
+        // Buscar a role do usuário
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+
+        if (roleError) throw roleError;
+
+        setIsAdmin(roleData?.role === 'admin');
+      } catch (error) {
+        console.error('Error fetching user role:', error);
+        setIsAdmin(false); // Default to non-admin on error
+      } finally {
         setLoading(false);
       }
+    };
+
+    // 1. Lidar com a sessão inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetchUserAndRole(session);
     });
 
-    // Check initial session manually if listener doesn't fire immediately
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserAndRole(session.user);
-      } else {
-        setLoading(false);
-      }
+    // 2. Lidar com mudanças de estado de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      fetchUserAndRole(session);
     });
 
     return () => {
-      authListener.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
   }, []);
 
-  const loadUserAndRole = async (currentUser: User) => {
-    setUserId(currentUser.id);
-    setUser(currentUser);
-    
-    try {
-      // Buscar a role do usuário
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', currentUser.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      const role = data?.role || 'user';
-      setIsAdmin(role === 'admin');
-    } catch (error) {
-      console.error('Error loading user role:', error);
-      setIsAdmin(false);
-    } finally {
-      setLoading(false);
-    }
+  const value = {
+    userId,
+    isAdmin,
+    loading,
+    user,
   };
 
   return (
-    <UserRoleContext.Provider value={{ userId, user, isAdmin, loading }}>
+    <UserRoleContext.Provider value={value}>
       {children}
     </UserRoleContext.Provider>
   );
