@@ -143,7 +143,6 @@ export default function KanbanBoard() {
       );
     }
     
-    // Filter: isReturningCustomer
     if (filters.isReturningCustomer) {
       result = result.filter(card => card.customerProfileId);
     }
