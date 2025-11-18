@@ -10,6 +10,7 @@ const corsHeaders = {
 };
 
 const ChatwootWebhookSchema = z.object({
+  id: z.number().optional(),
   event: z.enum(["conversation_created", "message_created", "message_updated", "conversation_updated"]),
   conversation: z.object({
     id: z.number(),
@@ -121,7 +122,7 @@ serve(async (req) => {
     }
 
     const { event, conversation, message_type, content: rawContent, sender, account, message } = webhook;
-    const messageId = message?.id?.toString();
+    const messageId = webhook.id?.toString() || message?.id?.toString();
     const derivedMessageType = message?.message_type || message_type;
     const raw = message?.content ?? rawContent;
     const content = raw ? sanitizeHTML(raw) : undefined;
@@ -234,14 +235,23 @@ serve(async (req) => {
       if (existingCard && ["message_created", "message_updated"].includes(event)) {
         console.log(`Processing ${event} for conversation:`, conversation.id);
 
-        // Robust deduplication using a persisted signature of the message
         const signature = computeSignature(messageId, conversation?.id?.toString(), effectiveSender?.name, derivedMessageType, content);
-        const sigs = (existingCard.custom_fields_data?.chatwoot_msg_sigs as string[]) || [];
-        if (signature && sigs.includes(signature)) {
-          console.log("Duplicate message detected by signature, skipping");
-          return new Response(JSON.stringify({ message: "Duplicate event ignored" }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
+        if (signature) {
+            const { error: insertError } = await supabase
+                .from('chatwoot_processed_events')
+                .insert({ signature });
+
+            if (insertError) {
+                if (insertError.code === '23505') { // Primary key violation = duplicate
+                    console.log('Duplicate event detected by signature, skipping.');
+                    return new Response(JSON.stringify({ message: 'Duplicate event ignored' }), {
+                        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                        status: 200
+                    });
+                }
+                console.error('Error inserting event signature:', insertError);
+                throw insertError;
+            }
         }
 
         const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
@@ -279,9 +289,6 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         };
         if (isAgent && sender?.name) updateData.chatwoot_agent_name = sender.name;
-        // Update message signature registry to avoid future duplicates
-        const newSigs = [...sigs, signature].slice(-20);
-        updateData.custom_fields_data = { ...(existingCard.custom_fields_data || {}), chatwoot_msg_sigs: newSigs };
 
         const { error: updateError } = await supabase.from("cards").update(updateData).eq("id", existingCard.id);
         if (updateError) {
@@ -299,6 +306,21 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+    }
+
+    if (event === 'conversation_created' && conversation?.id) {
+        const signature = `conv_created:${conversation.id}`;
+        const { error: insertError } = await supabase
+            .from('chatwoot_processed_events')
+            .insert({ signature });
+
+        if (insertError && insertError.code === '23505') {
+            console.log('Duplicate conversation_created event, skipping card creation.');
+            return new Response(JSON.stringify({ message: 'Duplicate event ignored' }), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200
+            });
+        }
     }
 
     // Reaproveitar customer_profile_id de card finalizado
@@ -398,7 +420,6 @@ serve(async (req) => {
     const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
     const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
     const initialMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova conversa iniciada"}`;
-    const initialSignature = computeSignature(messageId, conversation?.id?.toString(), effectiveSender?.name, derivedMessageType, content);
 
     const cardData: any = {
       column_id: firstColumn.id,
@@ -413,7 +434,7 @@ serve(async (req) => {
       inbox_name: conversation?.inbox?.name,
       position: 0,
       customer_profile_id: customerProfileId,
-      custom_fields_data: { chatwoot_msg_sigs: initialSignature ? [initialSignature] : [] },
+      custom_fields_data: {},
     };
     if (conversation?.assignee?.name) cardData.chatwoot_agent_name = conversation.assignee.name;
 
