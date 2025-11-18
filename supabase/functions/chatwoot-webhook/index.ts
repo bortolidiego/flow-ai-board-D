@@ -27,11 +27,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log('Webhook received:', req.method, req.url);
+
   try {
+    // Usar a chave de serviço para garantir permissões de escrita
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
     const body = await req.json();
@@ -40,11 +42,14 @@ serve(async (req) => {
     const message = body.message;
 
     if (!conversation || !message || !event) {
+      console.log('Invalid payload structure received.');
       return new Response(JSON.stringify({ error: 'Invalid webhook payload' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+    
+    console.log(`Processing event: ${event} for conversation: ${conversation.id}`);
 
     // Só processamos eventos de criação de mensagem
     if (event !== 'message_created') {
@@ -89,6 +94,7 @@ serve(async (req) => {
     if (fetchError) throw fetchError;
 
     if (!cardData) {
+      console.log(`Card not found for conversation ID ${conversationId}.`);
       // Se o card não existe, não podemos atualizar. Retornamos 200 para evitar reenvio.
       return new Response(JSON.stringify({ message: 'Card not found for conversation ID' }), {
         status: 200,
@@ -125,6 +131,7 @@ serve(async (req) => {
     if (updateError) throw updateError;
 
     // 4. Retornar 200 OK após a conclusão bem-sucedida da atualização
+    console.log(`Card ${cardData.id} updated successfully.`);
     return new Response(JSON.stringify({ message: 'Card updated successfully' }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
