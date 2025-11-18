@@ -114,18 +114,6 @@ function parseLine(raw: string): ParsedLine {
 export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
   const renderDescription = (text: string) => {
     if (!text) return null;
-    
-    // Exibir o texto cru, quebrando por linha
-    const lines = text.split('\n');
-
-    return lines.map((line, idx) => (
-      <p key={idx} className="text-xs whitespace-pre-wrap break-words leading-relaxed">
-        {line}
-      </p>
-    ));
-
-    /*
-    // Lógica anterior de bolhas de chat (mantida como comentário para referência)
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
 
     const bubbles: Array<{
@@ -221,7 +209,6 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
         message={b.message}
       />
     ));
-    */
   };
 
   return (
@@ -249,7 +236,7 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
               Ver conversa completa
             </summary>
             <div className="mt-2 p-3 bg-muted/30 rounded-lg max-h-[400px] overflow-y-auto">
-              <div className="space-y-1"> {/* Reduzi o espaçamento entre linhas para 'space-y-1' */}
+              <div className="space-y-2">
                 {renderDescription(description)}
               </div>
             </div>
