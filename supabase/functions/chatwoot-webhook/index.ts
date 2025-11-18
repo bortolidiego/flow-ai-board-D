@@ -46,7 +46,7 @@ serve(async (req) => {
   const conversation = body.conversation;
   const message = body.message;
 
-  // Se faltar evento, conversa ou mensagem, loga e retorna 200 OK
+  // Se faltar evento ou conversa, loga e retorna 200 OK
   if (!event || !conversation) {
     console.log('Invalid payload structure received (missing event or conversation).');
     return new Response(JSON.stringify({ message: 'Ignored incomplete payload' }), {
@@ -71,9 +71,9 @@ serve(async (req) => {
         });
     }
 
-    // Se for message_created, a mensagem deve existir
+    // Para message_created, o objeto message é obrigatório
     if (!message) {
-        console.log('message_created event received but message object is missing.');
+        console.log('message_created event received but message object is missing. Skipping.');
         return new Response(JSON.stringify({ message: 'Ignored message_created without message object' }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -108,55 +108,127 @@ serve(async (req) => {
     // 1. Buscar o card existente
     const { data: cardData, error: fetchError } = await supabaseClient
       .from('cards')
-      .select('id, description')
+      .select('id, description, column_id')
       .eq('chatwoot_conversation_id', conversationId)
       .maybeSingle();
 
     if (fetchError) throw fetchError;
 
+    let cardId: string;
+    let currentDescription: string;
+    let columnId: string;
+
     if (!cardData) {
-      console.log(`Card not found for conversation ID ${conversationId}.`);
-      // Se o card não existe, não podemos atualizar. Retornamos 200 para evitar reenvio.
-      return new Response(JSON.stringify({ message: 'Card not found for conversation ID' }), {
+      console.log(`Card not found for conversation ID ${conversationId}. Attempting to create new card.`);
+      
+      // --- Lógica de Criação de Card ---
+      
+      // 1. Buscar a pipeline e a coluna inicial (Novo Contato)
+      const { data: integrationData } = await supabaseClient
+        .from('chatwoot_integrations')
+        .select('pipeline_id')
+        .eq('account_id', conversation.account_id)
+        .maybeSingle();
+
+      if (!integrationData) {
+        console.log('No active integration found for this Chatwoot Account ID.');
+        return new Response(JSON.stringify({ message: 'No active integration found' }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      const pipelineId = integrationData.pipeline_id;
+      
+      const { data: initialColumn } = await supabaseClient
+        .from('columns')
+        .select('id, position')
+        .eq('pipeline_id', pipelineId)
+        .order('position', { ascending: true })
+        .limit(1)
+        .single();
+
+      if (!initialColumn) {
+        console.error('Initial column not found for pipeline:', pipelineId);
+        throw new Error('Initial column not found');
+      }
+      
+      // 2. Determinar o título do card
+      const contactName = conversation.contact?.name || conversation.meta?.sender?.name || `Conversa #${conversation.display_id}`;
+      const title = contactName;
+      
+      // 3. Inserir novo card
+      const { data: newCard, error: createError } = await supabaseClient
+        .from('cards')
+        .insert({
+          title: title,
+          description: newLine,
+          column_id: initialColumn.id,
+          position: initialColumn.position, // Usar a posição da coluna inicial
+          priority: 'medium',
+          chatwoot_conversation_id: conversationId,
+          chatwoot_contact_name: contactName,
+          chatwoot_contact_email: conversation.contact?.email,
+          chatwoot_agent_name: conversation.agent_last_seen_at ? conversation.meta?.assignee?.name : null,
+          inbox_name: conversation.inbox?.name,
+          created_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+        })
+        .select('id, description, column_id')
+        .single();
+
+      if (createError) throw createError;
+      
+      cardId = newCard.id;
+      currentDescription = newCard.description || '';
+      columnId = newCard.column_id;
+      
+      console.log(`✅ New card ${cardId} created successfully in column ${columnId}.`);
+      
+      // Se o card foi criado, a descrição já contém a primeira mensagem (newLine), então terminamos.
+      return new Response(JSON.stringify({ message: 'New card created and message processed' }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
+    } else {
+      // --- Lógica de Atualização de Card Existente ---
+      cardId = cardData.id;
+      currentDescription = cardData.description || '';
+      columnId = cardData.column_id;
+      
+      // 2. Prevenir Duplicação: Verificar se a nova linha já está presente na descrição
+      if (currentDescription.includes(newLine)) {
+          console.log(`[INFO] Message already exists in card ${cardId}. Skipping update.`);
+          return new Response(JSON.stringify({ message: 'Message already processed' }), {
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+      }
+
+      // 3. Atualizar a descrição do card
+      const newDescription = currentDescription 
+        ? `${currentDescription}\n${newLine}` 
+        : newLine;
+
+      const { error: updateError } = await supabaseClient
+        .from('cards')
+        .update({ 
+          description: newDescription,
+          updated_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+        })
+        .eq('id', cardId);
+
+      if (updateError) throw updateError;
+
+      // 4. Retornar 200 OK após a conclusão bem-sucedida da atualização
+      console.log(`Card ${cardId} updated successfully.`);
+      return new Response(JSON.stringify({ message: 'Card updated successfully' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    const currentDescription = cardData.description || '';
-    
-    // 2. Prevenir Duplicação: Verificar se a nova linha já está presente na descrição
-    // Usamos uma verificação simples de inclusão, pois a formatação é determinística.
-    if (currentDescription.includes(newLine)) {
-        console.log(`[INFO] Message already exists in card ${cardData.id}. Skipping update.`);
-        return new Response(JSON.stringify({ message: 'Message already processed' }), {
-            status: 200,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-    }
-
-    // 3. Atualizar a descrição do card
-    const newDescription = currentDescription 
-      ? `${currentDescription}\n${newLine}` 
-      : newLine;
-
-    const { error: updateError } = await supabaseClient
-      .from('cards')
-      .update({ 
-        description: newDescription,
-        updated_at: new Date().toISOString(),
-        last_activity_at: new Date().toISOString(),
-      })
-      .eq('id', cardData.id);
-
-    if (updateError) throw updateError;
-
-    // 4. Retornar 200 OK após a conclusão bem-sucedida da atualização
-    console.log(`Card ${cardData.id} updated successfully.`);
-    return new Response(JSON.stringify({ message: 'Card updated successfully' }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error) {
     console.error('Error processing webhook:', error);
