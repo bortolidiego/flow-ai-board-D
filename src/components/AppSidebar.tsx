@@ -27,7 +27,7 @@ const menuItems = [
   {
     title: "Brain",
     url: "/brain",
-    icon: Brain,
+    icon: Brain as any,
     requireAdmin: true,
   },
   {

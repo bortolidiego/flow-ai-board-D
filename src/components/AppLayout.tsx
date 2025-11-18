@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react';
-import { Link, Outlet } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -20,7 +20,7 @@ import { WorkspaceMembersDialog } from "@/components/WorkspaceMembersDialog";
 import { Users } from "lucide-react";
 
 interface AppLayoutProps {
-  children?: ReactNode; // Tornando opcional
+  children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
@@ -74,7 +74,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             )}
           </header>
           <main className="flex-1">
-            <Outlet /> {/* Renderiza as rotas aninhadas aqui */}
+            {children}
           </main>
         </div>
       </div>
