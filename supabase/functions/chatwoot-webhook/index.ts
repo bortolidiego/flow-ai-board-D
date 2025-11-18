@@ -29,31 +29,52 @@ serve(async (req) => {
 
   console.log('Webhook received:', req.method, req.url);
 
+  let body: any = {};
   try {
-    // Usar a chave de serviço para garantir permissões de escrita
+    // Tenta ler o corpo como JSON
+    body = await req.json();
+  } catch (e) {
+    // Se falhar (corpo vazio, não-JSON), loga e retorna 200 OK para evitar reenvio
+    console.log('Failed to parse JSON body. Assuming non-critical event or ping.');
+    return new Response(JSON.stringify({ message: 'Ignored non-JSON or empty payload' }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const event = body.event;
+  const conversation = body.conversation;
+  const message = body.message;
+
+  // Se faltar evento, conversa ou mensagem, loga e retorna 200 OK
+  if (!event || !conversation) {
+    console.log('Invalid payload structure received (missing event or conversation).');
+    return new Response(JSON.stringify({ message: 'Ignored incomplete payload' }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+  
+  try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const body = await req.json();
-    const event = body.event;
-    const conversation = body.conversation;
-    const message = body.message;
-
-    if (!conversation || !message || !event) {
-      console.log('Invalid payload structure received.');
-      return new Response(JSON.stringify({ error: 'Invalid webhook payload' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-    
     console.log(`Processing event: ${event} for conversation: ${conversation.id}`);
 
     // Só processamos eventos de criação de mensagem
     if (event !== 'message_created') {
         return new Response(JSON.stringify({ message: `Ignored event type: ${event}` }), {
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
+
+    // Se for message_created, a mensagem deve existir
+    if (!message) {
+        console.log('message_created event received but message object is missing.');
+        return new Response(JSON.stringify({ message: 'Ignored message_created without message object' }), {
             status: 200,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
