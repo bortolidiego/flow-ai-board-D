@@ -41,11 +41,21 @@ serve(async (req) => {
   }
 
   const event = body.event;
+
+  // Handle Chatwoot's ping event specifically
+  if (event === 'ping') {
+    console.log('Received ping from Chatwoot. Responding with 200 OK.');
+    return new Response(JSON.stringify({ message: 'Pong' }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
   const conversation = body.conversation;
   const message = body.message;
 
   if (!event || !conversation) {
-    console.log('Invalid payload structure received (missing event or conversation).');
+    console.log('Invalid payload structure received (missing event or conversation). Payload:', JSON.stringify(body).substring(0, 500));
     return new Response(JSON.stringify({ message: 'Ignored incomplete payload' }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
