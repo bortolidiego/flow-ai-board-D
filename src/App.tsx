@@ -9,25 +9,28 @@ import BrainPage from './pages/Brain';
 import ChangelogPage from './pages/Changelog';
 import ProvisionWrapper from './components/ProvisionWrapper';
 import { UserRoleProvider } from './hooks/useUserRole';
+import { WorkspaceProvider } from './hooks/useWorkspace';
 
 function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
       <UserRoleProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Rotas Públicas */}
-            <Route path="/auth" element={<AuthPage />} />
-            <Route path="/provision" element={<ProvisionWrapper />} />
-            
-            {/* Rotas Protegidas */}
-            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route path="/" element={<KanbanBoard />} />
-              <Route path="/brain" element={<ProtectedRoute requireAdmin><BrainPage /></ProtectedRoute>} />
-              <Route path="/changelog" element={<ChangelogPage />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
+        <WorkspaceProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Rotas Públicas */}
+              <Route path="/auth" element={<AuthPage />} />
+              <Route path="/provision" element={<ProvisionWrapper />} />
+              
+              {/* Rotas Protegidas */}
+              <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                <Route path="/" element={<KanbanBoard />} />
+                <Route path="/brain" element={<ProtectedRoute requireAdmin><BrainPage /></ProtectedRoute>} />
+                <Route path="/changelog" element={<ChangelogPage />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </WorkspaceProvider>
       </UserRoleProvider>
       <Toaster richColors />
     </ThemeProvider>

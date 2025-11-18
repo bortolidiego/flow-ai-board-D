@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserRole } from './useUserRole';
 import { toast } from 'sonner';
@@ -11,73 +11,85 @@ interface Workspace {
 interface WorkspaceContextType {
   workspace: Workspace | null;
   loading: boolean;
-  refreshWorkspace: () => void;
+  error: string | null;
+  refetch: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
-export function WorkspaceProvider({ children }: { children: ReactNode }) {
+interface WorkspaceProviderProps {
+  children: ReactNode;
+}
+
+export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
+  const { userId, loading: userLoading } = useUserRole();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const { userId, loading: userLoading } = useUserRole();
+  const [error, setError] = useState<string | null>(null);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
 
-  const refreshWorkspace = () => setRefreshKey(prev => prev + 1);
+  const fetchWorkspace = async (currentUserId: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 1. Buscar membros do workspace para o usuário atual
+      const { data: memberData, error: memberError } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', currentUserId)
+        .limit(1)
+        .maybeSingle();
 
-  useEffect(() => {
-    if (userLoading) return;
+      if (memberError) throw memberError;
 
-    const fetchWorkspace = async () => {
-      setLoading(true);
-      
-      if (!userId) {
+      if (!memberData) {
+        // Se o usuário não for membro de nenhum workspace, ele precisa ser provisionado
         setWorkspace(null);
-        setLoading(false);
         return;
       }
 
-      try {
-        // 1. Buscar a associação do usuário ao workspace
-        const { data: memberData, error: memberError } = await supabase
-          .from('workspace_members')
-          .select('workspace_id')
-          .eq('user_id', userId)
-          .limit(1)
-          .maybeSingle();
+      // 2. Buscar detalhes do workspace
+      const { data: workspaceData, error: workspaceError } = await supabase
+        .from('workspaces')
+        .select('id, name')
+        .eq('id', memberData.workspace_id)
+        .single();
 
-        if (memberError) throw memberError;
+      if (workspaceError) throw workspaceError;
 
-        if (!memberData) {
-          // Se não for membro, tentar criar um workspace padrão (Provisionamento)
-          setWorkspace(null);
-          setLoading(false);
-          return;
-        }
+      setWorkspace(workspaceData);
+    } catch (err: any) {
+      console.error('Error fetching workspace:', err);
+      setError(err.message || 'Erro ao carregar workspace.');
+      toast.error('Erro ao carregar workspace.');
+      setWorkspace(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        // 2. Buscar detalhes do workspace
-        const { data: workspaceData, error: workspaceError } = await supabase
-          .from('workspaces')
-          .select('id, name')
-          .eq('id', memberData.workspace_id)
-          .single();
-
-        if (workspaceError) throw workspaceError;
-
-        setWorkspace(workspaceData as Workspace);
-      } catch (error: any) {
-        console.error('Error fetching workspace:', error);
-        toast.error(`Erro ao carregar workspace: ${error.message}`);
+  useEffect(() => {
+    if (!userLoading) {
+      if (userId) {
+        fetchWorkspace(userId);
+      } else {
         setWorkspace(null);
-      } finally {
         setLoading(false);
       }
-    };
+    }
+  }, [userId, userLoading, refetchTrigger]);
 
-    fetchWorkspace();
-  }, [userId, userLoading, refreshKey]);
+  const refetch = () => setRefetchTrigger(prev => prev + 1);
+
+  const value = {
+    workspace,
+    loading,
+    error,
+    refetch,
+  };
 
   return (
-    <WorkspaceContext.Provider value={{ workspace, loading, refreshWorkspace }}>
+    <WorkspaceContext.Provider value={value}>
       {children}
     </WorkspaceContext.Provider>
   );
