@@ -89,6 +89,7 @@ serve(async (req) => {
     if (fetchError) throw fetchError;
 
     if (!cardData) {
+      // Se o card não existe, não podemos atualizar. Retornamos 200 para evitar reenvio.
       return new Response(JSON.stringify({ message: 'Card not found for conversation ID' }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -97,15 +98,9 @@ serve(async (req) => {
 
     const currentDescription = cardData.description || '';
     
-    // 2. Prevenir Duplicação: Verificar se a última linha já corresponde à nova linha
-    const lines = currentDescription.split('\n').filter(line => line.trim() !== '');
-    const lastLine = lines[lines.length - 1];
-
-    // Se a última linha for idêntica à nova linha, ou se a nova linha já estiver presente
-    // nas últimas 3 linhas (para cobrir pequenos atrasos ou retransmissões), ignoramos.
-    const isDuplicate = lines.slice(-3).some(line => line.trim() === newLine.trim());
-
-    if (isDuplicate) {
+    // 2. Prevenir Duplicação: Verificar se a nova linha já está presente na descrição
+    // Usamos uma verificação simples de inclusão, pois a formatação é determinística.
+    if (currentDescription.includes(newLine)) {
         console.log(`[INFO] Message already exists in card ${cardData.id}. Skipping update.`);
         return new Response(JSON.stringify({ message: 'Message already processed' }), {
             status: 200,
@@ -129,6 +124,7 @@ serve(async (req) => {
 
     if (updateError) throw updateError;
 
+    // 4. Retornar 200 OK após a conclusão bem-sucedida da atualização
     return new Response(JSON.stringify({ message: 'Card updated successfully' }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -136,6 +132,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error processing webhook:', error);
+    // Em caso de erro, retornamos 500 para que o Chatwoot tente novamente (se configurado)
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
