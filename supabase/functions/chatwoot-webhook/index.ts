@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'; // Alterado para usar a versão 2 mais recente
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
