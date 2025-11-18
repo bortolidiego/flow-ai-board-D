@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Loader2, Settings, Zap, Target, Database, Clock, MessageSquare } from 'lucide-react';
+import { Loader2, Zap, Target, Database, Clock, MessageSquare } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -14,6 +14,7 @@ import { InactivityRulesManager } from '@/components/InactivityRulesManager';
 import { PipelineStagesManager } from '@/components/PipelineStagesManager';
 import { CardMovementRulesManager } from '@/components/CardMovementRulesManager';
 import { ChatwootSettings } from '@/components/ChatwootSettings';
+import { PipelineStatusSummary } from '@/components/PipelineStatusSummary';
 
 interface Column {
   id: string;
@@ -43,6 +44,7 @@ function BrainPage() {
   const [pipelineData, setPipelineData] = useState<PipelineData | null>(null);
   const [loading, setLoading] = useState(true);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [statusSummary, setStatusSummary] = useState<any>(null);
 
   const fetchPipelineData = async (workspaceId: string) => {
     setLoading(true);
@@ -126,7 +128,7 @@ function BrainPage() {
 
   if (!workspace) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-6 max-w-6xl mx-auto">
         <Card>
           <CardHeader>
             <CardTitle>Workspace não encontrado</CardTitle>
@@ -141,7 +143,7 @@ function BrainPage() {
 
   if (!pipelineId) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-6 max-w-6xl mx-auto">
         <Card>
           <CardHeader>
             <CardTitle>Pipeline não configurada</CardTitle>
@@ -162,6 +164,12 @@ function BrainPage() {
       <p className="text-muted-foreground">
         Configure a inteligência artificial, funis, etapas e integrações para otimizar o fluxo de trabalho.
       </p>
+
+      {/* Novo componente de Status */}
+      <PipelineStatusSummary 
+        pipelineId={pipelineId} 
+        onDataLoaded={setStatusSummary} 
+      />
 
       <Tabs defaultValue="ai" className="w-full">
         <TabsList className="grid w-full grid-cols-5 h-auto flex-wrap">
