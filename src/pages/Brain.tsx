@@ -1,139 +1,231 @@
 import { useState, useEffect } from 'react';
-import { useKanbanData } from '@/hooks/useKanbanData';
-import { useWorkspace } from '@/hooks/useWorkspace';
-import { useUserRole } from '@/hooks/useUserRole';
-import { AIPromptBuilder } from '@/components/AIPromptBuilder';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Sparkles, Settings, Target, Clock } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Loader2, Settings, Zap, Target, Database, Clock, MessageSquare } from 'lucide-react';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { AIPromptBuilder } from '@/components/AIPromptBuilder';
 import { CustomFieldsManager } from '@/components/CustomFieldsManager';
 import { FunnelTypesManager } from '@/components/FunnelTypesManager';
 import { FunnelLifecycleManager } from '@/components/FunnelLifecycleManager';
 import { MovementRulesManager } from '@/components/MovementRulesManager';
 import { InactivityRulesManager } from '@/components/InactivityRulesManager';
+import { PipelineStagesManager } from '@/components/PipelineStagesManager';
 import { CardMovementRulesManager } from '@/components/CardMovementRulesManager';
+import { ChatwootSettings } from '@/components/ChatwootSettings';
 
-export default function Brain() {
-  const { workspace } = useWorkspace();
-  const { isAdmin } = useUserRole();
-  
-  // Corrigido Erros 6, 7: useKanbanData não aceita argumento e não retorna fetchPipeline
-  const { pipeline, pipelineConfig, loading, refreshCards } = useKanbanData(); 
-  
-  const [customFields, setCustomFields] = useState<any[]>([]);
+interface Column {
+  id: string;
+  name: string;
+  position: number;
+}
+
+interface CustomField {
+  id: string;
+  field_name: string;
+  field_label: string;
+  field_type: 'text' | 'number' | 'date' | 'select' | 'email' | 'phone';
+  field_options?: any;
+  is_required: boolean;
+  position: number;
+}
+
+interface PipelineData {
+  id: string;
+  columns: Column[];
+  customFields: CustomField[];
+  aiConfig: any;
+}
+
+function BrainPage() {
+  const { workspace, loading: workspaceLoading } = useWorkspace();
+  const [pipelineData, setPipelineData] = useState<PipelineData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+
+  const fetchPipelineData = async (workspaceId: string) => {
+    setLoading(true);
+    try {
+      // 1. Buscar a primeira pipeline do workspace
+      const { data: pipeline, error: pipelineError } = await supabase
+        .from('pipelines')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .limit(1)
+        .maybeSingle();
+
+      if (pipelineError) throw pipelineError;
+
+      if (!pipeline) {
+        setPipelineId(null);
+        setPipelineData(null);
+        return;
+      }
+
+      const currentPipelineId = pipeline.id;
+      setPipelineId(currentPipelineId);
+
+      // 2. Buscar colunas
+      const { data: columnsData, error: columnsError } = await supabase
+        .from('columns')
+        .select('id, name, position')
+        .eq('pipeline_id', currentPipelineId)
+        .order('position');
+
+      if (columnsError) throw columnsError;
+
+      // 3. Buscar campos customizados
+      const { data: customFieldsData, error: customFieldsError } = await supabase
+        .from('pipeline_custom_fields')
+        .select('*')
+        .eq('pipeline_id', currentPipelineId)
+        .order('position');
+
+      if (customFieldsError) throw customFieldsError;
+
+      // 4. Buscar AI Config (para passar para o AIPromptBuilder)
+      const { data: aiConfigData, error: aiConfigError } = await supabase
+        .from('pipeline_ai_config')
+        .select('*')
+        .eq('pipeline_id', currentPipelineId)
+        .maybeSingle();
+
+      if (aiConfigError) throw aiConfigError;
+
+      setPipelineData({
+        id: currentPipelineId,
+        columns: columnsData || [],
+        customFields: customFieldsData || [],
+        aiConfig: aiConfigData,
+      });
+
+    } catch (error: any) {
+      console.error('Error fetching pipeline data:', error);
+      toast.error(`Erro ao carregar dados da pipeline: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (pipelineConfig?.customFields) {
-      setCustomFields(pipelineConfig.customFields);
+    if (!workspaceLoading && workspace) {
+      fetchPipelineData(workspace.id);
+    } else if (!workspaceLoading && !workspace) {
+      setLoading(false);
     }
-  }, [pipelineConfig]);
+  }, [workspaceLoading, workspace]);
 
-  if (!isAdmin) {
+  if (loading || workspaceLoading) {
     return (
-      <div className="p-8 text-center">
-        <h1 className="text-2xl font-bold">Acesso Negado</h1>
-        <p className="text-muted-foreground">Apenas administradores podem acessar esta página.</p>
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (loading || !workspace || !pipeline) {
+  if (!workspace) {
     return (
-      <div className="p-8">
+      <div className="p-6 max-w-2xl mx-auto">
         <Card>
           <CardHeader>
-            <CardTitle>Configuração da Inteligência</CardTitle>
+            <CardTitle>Workspace não encontrado</CardTitle>
+            <CardDescription>
+              Você precisa criar ou ser adicionado a um workspace para acessar as configurações.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-center h-32">
-              <Sparkles className="w-8 h-8 animate-pulse text-primary" />
-            </div>
-          </CardContent>
         </Card>
       </div>
     );
   }
 
+  if (!pipelineId) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>Pipeline não configurada</CardTitle>
+            <CardDescription>
+              Nenhuma pipeline encontrada para este workspace. Por favor, crie uma pipeline.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  const { columns, customFields } = pipelineData!;
+
   return (
-    <div className="p-4 md:p-8 space-y-6">
-      <h1 className="text-3xl font-bold flex items-center gap-2">
-        <Sparkles className="w-6 h-6 text-primary" />
-        Brain - Configuração da IA
-      </h1>
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
+      <h1 className="text-3xl font-bold">Brain da Pipeline</h1>
       <p className="text-muted-foreground">
-        Configure como a Inteligência Artificial deve analisar e interagir com seus cards.
+        Configure a inteligência artificial, funis, etapas e integrações para otimizar o fluxo de trabalho.
       </p>
 
-      <Tabs defaultValue="ai-prompt">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="ai-prompt" className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Prompt
-          </TabsTrigger>
-          <TabsTrigger value="funnels" className="flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Funis
-          </TabsTrigger>
-          <TabsTrigger value="lifecycle" className="flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Ciclo de Vida
-          </TabsTrigger>
-          <TabsTrigger value="fields" className="flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Campos
-          </TabsTrigger>
-          <TabsTrigger value="rules" className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            Regras
-          </TabsTrigger>
+      <Tabs defaultValue="ai" className="w-full">
+        <TabsList className="grid w-full grid-cols-5 h-auto flex-wrap">
+          <TabsTrigger value="ai" className="flex items-center gap-2"><Zap className="w-4 h-4" /> Inteligência Artificial</TabsTrigger>
+          <TabsTrigger value="funnels" className="flex items-center gap-2"><Target className="w-4 h-4" /> Funis & Ciclo de Vida</TabsTrigger>
+          <TabsTrigger value="stages" className="flex items-center gap-2"><Database className="w-4 h-4" /> Etapas & Campos</TabsTrigger>
+          <TabsTrigger value="rules" className="flex items-center gap-2"><Clock className="w-4 h-4" /> Regras de Movimentação</TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Integrações</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="ai-prompt" className="mt-6">
-          <AIPromptBuilder
-            pipelineId={pipeline.id}
-            customFields={customFields}
-            onUpdate={refreshCards}
+        <TabsContent value="ai" className="space-y-6 mt-6">
+          <AIPromptBuilder 
+            pipelineId={pipelineId} 
+            customFields={customFields} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
           />
         </TabsContent>
 
-        <TabsContent value="funnels" className="mt-6 space-y-6">
-          <FunnelTypesManager
-            pipelineId={pipeline.id}
-            onUpdate={refreshCards}
+        <TabsContent value="funnels" className="space-y-6 mt-6">
+          <FunnelTypesManager 
+            pipelineId={pipelineId} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
+          />
+          <FunnelLifecycleManager 
+            pipelineId={pipelineId} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
           />
         </TabsContent>
 
-        <TabsContent value="lifecycle" className="mt-6 space-y-6">
-          <FunnelLifecycleManager
-            pipelineId={pipeline.id}
-            onUpdate={refreshCards}
+        <TabsContent value="stages" className="space-y-6 mt-6">
+          <PipelineStagesManager 
+            pipelineId={pipelineId} 
+            columns={columns} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
+          />
+          <CustomFieldsManager 
+            pipelineId={pipelineId} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
           />
         </TabsContent>
 
-        <TabsContent value="fields" className="mt-6 space-y-6">
-          <CustomFieldsManager
-            pipelineId={pipeline.id}
-            onUpdate={refreshCards}
+        <TabsContent value="rules" className="space-y-6 mt-6">
+          <MovementRulesManager 
+            pipelineId={pipelineId} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
           />
-        </TabsContent>
-
-        <TabsContent value="rules" className="mt-6 space-y-6">
+          <InactivityRulesManager 
+            pipelineId={pipelineId} 
+            onUpdate={() => fetchPipelineData(workspace.id)}
+          />
           <CardMovementRulesManager
-            pipelineId={pipeline.id}
-            columns={pipeline.columns}
+            pipelineId={pipelineId}
+            columns={columns}
             customFields={customFields}
-            onUpdate={refreshCards}
+            onUpdate={() => fetchPipelineData(workspace.id)}
           />
-          <MovementRulesManager
-            pipelineId={pipeline.id}
-            onUpdate={refreshCards}
-          />
-          <InactivityRulesManager
-            pipelineId={pipeline.id}
-            onUpdate={refreshCards}
-          />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6 mt-6">
+          <ChatwootSettings pipelineId={pipelineId} />
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+
+export default BrainPage;
