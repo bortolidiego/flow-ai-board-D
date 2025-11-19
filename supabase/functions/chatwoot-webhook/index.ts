@@ -30,7 +30,7 @@ const ChatwootWebhookSchema = z.object({
     }).optional(),
   }).optional(),
   message_type: z.enum(["incoming", "outgoing"]).optional(),
-  content: z.string().max(50000).optional(),
+  content: z.string().max(50000).nullable().optional(),
   sender: z.object({
     type: z.string().max(50).optional(),
     name: z.string().max(200).optional(),
@@ -43,13 +43,17 @@ const ChatwootWebhookSchema = z.object({
   message: z.object({
     id: z.number(),
     message_type: z.enum(["incoming","outgoing"]).optional(),
-    content: z.string().max(50000).optional(),
+    content: z.string().max(50000).nullable().optional(),
     private: z.boolean().optional(),
     sender: z.object({
       type: z.string().max(50).optional(),
       name: z.string().max(200).optional(),
       email: z.string().email().max(255).optional().nullable(),
     }).optional().nullable(),
+    attachments: z.array(z.object({
+      file_type: z.string().optional(),
+      data_url: z.string().optional(),
+    })).optional().nullable(),
   }).optional(),
 });
 
@@ -124,8 +128,41 @@ serve(async (req) => {
     const { event, conversation, message_type, content: rawContent, sender, account, message } = webhook;
     const messageId = webhook.id?.toString() || message?.id?.toString();
     const derivedMessageType = message?.message_type || message_type;
-    const raw = message?.content ?? rawContent;
-    const content = raw ? sanitizeHTML(raw) : undefined;
+    
+    let content = rawContent || message?.content;
+    const attachments = message?.attachments || [];
+    
+    // Lógica de Transcrição de Áudio
+    const audioAttachment = attachments?.find((att: any) => att.file_type === 'audio');
+    
+    if (audioAttachment && audioAttachment.data_url) {
+      console.log("Audio attachment found, triggering transcription...");
+      try {
+        const { data: transcriptionData, error: transcriptionError } = await supabase.functions.invoke('audio-transcribe', {
+          body: { fileUrl: audioAttachment.data_url },
+          headers: { Authorization: `Bearer ${supabaseKey}` }
+        });
+
+        if (transcriptionError) {
+          console.error("Error transcribing audio:", transcriptionError);
+          content = "[Áudio não transcrito]";
+        } else if (transcriptionData?.text) {
+          console.log("Audio transcribed successfully");
+          content = `[Áudio transcrito]: ${transcriptionData.text}`;
+        } else {
+          content = "[Áudio]";
+        }
+      } catch (err) {
+        console.error("Failed to invoke audio-transcribe:", err);
+        content = "[Erro na transcrição de áudio]";
+      }
+    } else if (!content && attachments && attachments.length > 0) {
+      // Se não é áudio mas tem anexo (imagem, arquivo) e sem texto
+      const type = attachments[0].file_type || "arquivo";
+      content = `[Anexo: ${type}]`;
+    }
+    
+    content = content ? sanitizeHTML(content) : "";
     const isPrivate = (message?.private ?? webhook.private) === true;
     const effectiveSender = message?.sender ?? sender;
 
