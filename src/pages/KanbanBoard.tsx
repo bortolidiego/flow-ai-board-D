@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +36,7 @@ const KanbanBoard = () => {
     loading,
     updateCardColumn,
     deleteCards,
+    restoreCards,
     bulkUpdateCardColumn,
     refreshCards,
   } = useKanbanData(workspace?.id);
@@ -155,15 +157,17 @@ const KanbanBoard = () => {
     });
   };
 
+  // CORREÇÃO: Usa filteredCards em vez de cards (todos)
   const selectAllCards = () => {
-    setSelectedCardIds(new Set(cards.map(c => c.id)));
+    setSelectedCardIds(new Set(filteredCards.map(c => c.id)));
   };
 
+  // CORREÇÃO: Filtra usando filteredCards para respeitar filtros ativos na coluna
   const selectColumnCards = (columnId: string) => {
-    const columnCards = cards.filter(c => c.columnId === columnId);
+    const columnCards = filteredCards.filter(c => c.columnId === columnId);
     setSelectedCardIds(prev => {
       const newSet = new Set(prev);
-      const allSelected = columnCards.every(card => newSet.has(card.id));
+      const allSelected = columnCards.length > 0 && columnCards.every(card => newSet.has(card.id));
       
       if (allSelected) {
         columnCards.forEach(card => newSet.delete(card.id));
@@ -175,12 +179,37 @@ const KanbanBoard = () => {
     });
   };
 
+  const handleRestore = async (ids: string[]) => {
+    const success = await restoreCards(ids);
+    if (success) {
+      refreshCards();
+      toast({
+        title: 'Cards restaurados',
+        description: `${ids.length} cards foram recuperados com sucesso.`,
+      });
+    }
+  };
+
   const handleBulkDelete = async () => {
-    const success = await deleteCards(Array.from(selectedCardIds));
+    const idsToDelete = Array.from(selectedCardIds);
+    const success = await deleteCards(idsToDelete);
+    
     if (success) {
       setSelectedCardIds(new Set());
       setSelectionMode(false);
       refreshCards();
+
+      // Show Toast with Undo Action
+      toast({
+        title: "Cards movidos para lixeira",
+        description: `${idsToDelete.length} cards foram removidos.`,
+        action: (
+          <ToastAction altText="Desfazer" onClick={() => handleRestore(idsToDelete)}>
+            Desfazer
+          </ToastAction>
+        ),
+        duration: 5000,
+      });
     }
   };
 
@@ -305,7 +334,7 @@ const KanbanBoard = () => {
                           size="sm"
                           className="h-7 text-xs"
                         >
-                          Todos
+                          Todos (Filtrados)
                         </Button>
                         <Separator orientation="vertical" className="h-6" />
                       </>
@@ -327,7 +356,7 @@ const KanbanBoard = () => {
                       className="w-full"
                     >
                       <CheckSquare className="w-4 h-4 mr-2" />
-                      Selecionar Todos
+                      Todos (Filtrados)
                     </Button>
                   )}
                 </div>
@@ -378,12 +407,6 @@ const KanbanBoard = () => {
           "flex-1 overflow-auto", // Este é o container de scroll principal (X e Y)
           isMobile ? "px-3 pb-20 pt-4" : "px-6 pb-6 pt-4"
         )}>
-          {/* 
-             TRUQUE PARA CENTRALIZAR SEM CORTAR O LADO ESQUERDO:
-             inline-flex + min-w-full + justify-center
-             Se o conteúdo for menor que a tela, justify-center centraliza.
-             Se for maior, min-w-full expande e o browser permite scroll normal da esquerda para direita.
-          */}
           <div className="inline-flex min-w-full justify-center items-start">
             <div className={cn(
                 "flex gap-4",

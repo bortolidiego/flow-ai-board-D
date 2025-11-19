@@ -153,6 +153,7 @@ export type Database = {
           current_lifecycle_stage: string | null
           custom_fields_data: Json | null
           customer_profile_id: string | null
+          deleted_at: string | null
           description: string | null
           funnel_score: number | null
           funnel_type: string | null
@@ -192,6 +193,7 @@ export type Database = {
           current_lifecycle_stage?: string | null
           custom_fields_data?: Json | null
           customer_profile_id?: string | null
+          deleted_at?: string | null
           description?: string | null
           funnel_score?: number | null
           funnel_type?: string | null
@@ -231,6 +233,7 @@ export type Database = {
           current_lifecycle_stage?: string | null
           custom_fields_data?: Json | null
           customer_profile_id?: string | null
+          deleted_at?: string | null
           description?: string | null
           funnel_score?: number | null
           funnel_type?: string | null
@@ -751,6 +754,7 @@ export type Database = {
           pipeline_id: string
           updated_at: string | null
           warning_threshold_percent: number | null
+          sla_strategy: string | null
         }
         Insert: {
           created_at?: string | null
@@ -760,6 +764,7 @@ export type Database = {
           pipeline_id: string
           updated_at?: string | null
           warning_threshold_percent?: number | null
+          sla_strategy?: string | null
         }
         Update: {
           created_at?: string | null
@@ -769,6 +774,7 @@ export type Database = {
           pipeline_id?: string
           updated_at?: string | null
           warning_threshold_percent?: number | null
+          sla_strategy?: string | null
         }
         Relationships: [
           {
@@ -933,6 +939,7 @@ export type Database = {
     }
     Functions: {
       delete_cards_bulk: { Args: { card_ids: string[] }; Returns: undefined }
+      restore_cards_bulk: { Args: { card_ids: string[] }; Returns: undefined }
       generate_customer_identifier: {
         Args: { p_chatwoot_id: string; p_email: string; p_phone: string }
         Returns: string

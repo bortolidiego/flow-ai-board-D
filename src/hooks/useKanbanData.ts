@@ -12,7 +12,7 @@ export interface Card {
   createdAt: string;
   columnId: string;
   chatwootContactName?: string;
-  chatwootAgentName?: string; // Added field
+  chatwootAgentName?: string; 
   chatwootConversationId?: string;
   chatwootUrl?: string;
   chatwootAccountId?: string;
@@ -129,7 +129,6 @@ export const useKanbanData = (workspaceId?: string) => {
 
   const fetchPipelineConfig = async (pipelineId: string) => {
     try {
-      // Buscar custom fields
       const { data: customFieldsData, error: customFieldsError } = await supabase
         .from('pipeline_custom_fields')
         .select('*')
@@ -138,7 +137,6 @@ export const useKanbanData = (workspaceId?: string) => {
 
       if (customFieldsError) throw customFieldsError;
 
-      // Buscar funnel types
       const { data: funnelTypesData, error: funnelTypesError } = await supabase
         .from('funnel_config')
         .select('*')
@@ -147,7 +145,6 @@ export const useKanbanData = (workspaceId?: string) => {
 
       if (funnelTypesError) throw funnelTypesError;
 
-      // Buscar AI config
       const { data: aiConfigData, error: aiConfigError } = await supabase
         .from('pipeline_ai_config')
         .select('*')
@@ -183,7 +180,6 @@ export const useKanbanData = (workspaceId?: string) => {
 
     const columnIds = (pipelineData.columns as any[]).map(c => c.id);
 
-    // Fetch Chatwoot URL and account ID for this pipeline
     const { data: chatwootIntegration } = await supabase
       .from('chatwoot_integrations')
       .select('chatwoot_url, account_id')
@@ -197,6 +193,7 @@ export const useKanbanData = (workspaceId?: string) => {
       .from('cards')
       .select('*')
       .in('column_id', columnIds)
+      .is('deleted_at', null) // FILTER DELETED CARDS
       .order('position');
 
     if (error) {
@@ -219,7 +216,7 @@ export const useKanbanData = (workspaceId?: string) => {
         createdAt: card.created_at,
         columnId: card.column_id,
         chatwootContactName: card.chatwoot_contact_name,
-        chatwootAgentName: card.chatwoot_agent_name, // Mapping added here
+        chatwootAgentName: card.chatwoot_agent_name,
         chatwootConversationId: card.chatwoot_conversation_id,
         chatwootUrl: chatwootUrl,
         chatwootAccountId: chatwootAccountId,
@@ -254,7 +251,7 @@ export const useKanbanData = (workspaceId?: string) => {
       .from('cards')
       .update({ 
         column_id: newColumnId,
-        updated_at: new Date().toISOString() // Force update timestamp for SLA reset
+        updated_at: new Date().toISOString() 
       })
       .eq('id', cardId);
 
@@ -284,19 +281,28 @@ export const useKanbanData = (workspaceId?: string) => {
       return false;
     }
 
-    toast({
-      title: 'Cards excluídos',
-      description: `${cardIds.length} ${cardIds.length === 1 ? 'card excluído' : 'cards excluídos'} com sucesso.`,
+    return true; // Toast is handled in component to allow Undo action
+  };
+
+  const restoreCards = async (cardIds: string[]) => {
+    const { error } = await supabase.rpc('restore_cards_bulk', {
+      card_ids: cardIds
     });
 
+    if (error) {
+      toast({
+        title: 'Erro ao restaurar cards',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return false;
+    }
+    
+    // Refresh handled by caller or realtime
     return true;
   };
 
   const bulkUpdateCardColumn = async (cardIds: string[], newColumnId: string) => {
-    // Note: The RPC function likely handles simple updates. If we need to update updated_at, 
-    // we might need to modify the RPC or call update directly. 
-    // For bulk, using RPC is better for performance, assuming standard trigger or logic.
-    // But to be safe with our SLA logic, we rely on the RPC for now.
     const { error } = await supabase.rpc('update_cards_column_bulk', {
       card_ids: cardIds,
       new_column_id: newColumnId
@@ -329,7 +335,6 @@ export const useKanbanData = (workspaceId?: string) => {
     };
     init();
 
-    // Subscribe to realtime changes
     const channel = supabase
       .channel('kanban-changes')
       .on(
@@ -362,6 +367,7 @@ export const useKanbanData = (workspaceId?: string) => {
     loading,
     updateCardColumn,
     deleteCards,
+    restoreCards,
     bulkUpdateCardColumn,
     refreshCards: () => pipeline && fetchCards(pipeline.id),
     fetchPipeline: () => workspaceId && fetchPipeline(workspaceId),
