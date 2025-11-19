@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MessageSquare } from 'lucide-react';
 import ChatMessageBubble from './ChatMessageBubble';
+import { useRef, useEffect } from 'react';
 
 interface ConversationSummaryProps {
   summary?: string;
@@ -8,6 +9,14 @@ interface ConversationSummaryProps {
 }
 
 type Role = 'agent' | 'client' | 'system';
+
+interface ParsedMessage {
+  role: Role;
+  time?: string;
+  name?: string;
+  message: string;
+  isContinuation?: boolean;
+}
 
 /**
  * Normaliza o nome removendo emojis e labels técnicos
@@ -21,13 +30,12 @@ function cleanName(raw: string): string {
 }
 
 /**
- * Verifica se a mensagem é "lixo" do sistema (ex: apenas o nome entre asteriscos)
+ * Verifica se a mensagem é "lixo" do sistema
  */
 function isNoise(message: string, name?: string): boolean {
   if (!message) return true;
   const cleanMsg = message.trim();
   
-  // Remove mensagens que são apenas "*Nome:*", "*Nome*", "Nome:"
   if (name && (
     cleanMsg === `*${name}:*` || 
     cleanMsg === `*${name}*` || 
@@ -39,89 +47,105 @@ function isNoise(message: string, name?: string): boolean {
   return false;
 }
 
-/**
- * Parser principal das linhas do chat
- */
-function parseLine(raw: string): { role: Role; time?: string; name?: string; message?: string } | null {
-  const line = raw.trim();
-  if (!line) return null;
-
-  // Regex para capturar formato: [DATA HORA] EMOJI LABEL NOME: MENSAGEM
-  const strictRegex = /^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*(?:Atendente|Agente|Cliente)?\s*)?([^:]+):\s*(.+)$/i;
-  const match = line.match(strictRegex);
-
-  if (match) {
-    const time = match[1]; // ex: 19/11 13:44
-    const marker = match[2] || ''; // Emoji
-    const rawName = match[3]; // Nome cru
-    const message = match[4]; // Conteúdo
-
-    // Limpa o nome
-    const displayName = cleanName(rawName);
-
-    // Se a mensagem for apenas o nome do usuário repetido (bug do chatwoot), ignora
-    if (isNoise(message, displayName)) {
-      return null;
-    }
-
-    let role: Role = 'client'; // Default
-
-    // Determina role pelo emoji ou keywords no nome
-    if (marker === '🧑‍💼' || /\b(atendente|agente|kb tech|suporte)\b/i.test(rawName)) {
-      role = 'agent';
-    } else if (marker === '👤' || /\bcliente\b/i.test(rawName)) {
-      role = 'client';
-    }
-
-    return { role, time, name: displayName, message };
-  }
-
-  // Fallback para linhas de sistema
-  if (
-    /conversa.*encerrad/i.test(line) ||
-    /transferid/i.test(line) ||
-    /atribuíd/i.test(line) ||
-    /iniciada/i.test(line)
-  ) {
-    const timeMatch = line.match(/^\[(.*?)\]/);
-    const time = timeMatch ? timeMatch[1] : undefined;
-    const message = line.replace(/^\[.*?\]\s*/, '');
-    return { role: 'system', time, message };
-  }
-
-  // Se não casou com nada, retorna null para não sujar a tela, ou exibe como sistema se tiver conteúdo útil
-  if (line.length > 3 && !line.startsWith('[')) {
-      return { role: 'system', message: line };
-  }
-
-  return null;
-}
-
 export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
-  const renderDescription = (text: string) => {
-    if (!text) return null;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [description]);
+
+  const parseMessages = (text: string): ParsedMessage[] => {
+    if (!text) return [];
     
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
+    const parsedMessages: ParsedMessage[] = [];
     
-    // Processa as linhas e filtra nulos
-    const messages = lines
-      .map(line => parseLine(line))
-      .filter((msg): msg is NonNullable<typeof msg> => msg !== null);
-    
-    if (messages.length === 0) {
-        return <p className="text-sm text-muted-foreground p-2">Nenhuma mensagem legível encontrada.</p>;
-    }
+    let lastRole: Role = 'system'; // Começa como sistema para segurança
+    let lastName: string | undefined = undefined;
 
-    return messages.map((parsed, idx) => (
-      <ChatMessageBubble
-        key={idx}
-        role={parsed.role}
-        time={parsed.time}
-        name={parsed.name}
-        message={parsed.message || ''}
-      />
-    ));
+    lines.forEach((line) => {
+      const raw = line.trim();
+      
+      // Regex para capturar formato: [DATA HORA] EMOJI LABEL NOME: MENSAGEM
+      const strictRegex = /^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*(?:Atendente|Agente|Cliente)?\s*)?([^:]+):\s*(.+)$/i;
+      const match = raw.match(strictRegex);
+
+      if (match) {
+        const time = match[1];
+        const marker = match[2] || '';
+        const rawName = match[3];
+        const messageContent = match[4];
+        const displayName = cleanName(rawName);
+
+        if (isNoise(messageContent, displayName)) return;
+
+        let role: Role = 'client';
+        if (marker === '🧑‍💼' || /\b(atendente|agente|kb tech|suporte)\b/i.test(rawName)) {
+          role = 'agent';
+        } else if (marker === '👤' || /\bcliente\b/i.test(rawName)) {
+          role = 'client';
+        }
+
+        lastRole = role;
+        lastName = displayName;
+
+        parsedMessages.push({
+          role,
+          time,
+          name: displayName,
+          message: messageContent,
+          isContinuation: false
+        });
+        return;
+      }
+
+      // Verifica se é evento de sistema
+      if (
+        /conversa.*encerrad/i.test(raw) ||
+        /transferid/i.test(raw) ||
+        /atribuíd/i.test(raw) ||
+        /iniciada/i.test(raw) ||
+        /etiqueta/i.test(raw)
+      ) {
+        // Tenta extrair hora se existir
+        const timeMatch = raw.match(/^\[(.*?)\]/);
+        const time = timeMatch ? timeMatch[1] : undefined;
+        const message = raw.replace(/^\[.*?\]\s*/, '');
+        
+        parsedMessages.push({
+          role: 'system',
+          time,
+          message,
+          isContinuation: false
+        });
+        // Não atualiza lastRole para sistema, mantém o último contexto de fala
+        return;
+      }
+
+      // Se não é cabeçalho nem sistema, assume continuação da última mensagem
+      if (lastRole !== 'system') {
+        parsedMessages.push({
+          role: lastRole,
+          name: lastName,
+          message: raw,
+          isContinuation: true
+        });
+      } else {
+        // Se não tem contexto, trata como sistema (centralizado)
+        parsedMessages.push({
+          role: 'system',
+          message: raw,
+          isContinuation: false
+        });
+      }
+    });
+
+    return parsedMessages;
   };
+
+  const messages = parseMessages(description || '');
 
   return (
     <Card>
@@ -143,13 +167,41 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
         )}
 
         {description && (
-          <div className="mt-6">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Histórico da Conversa
-            </p>
-            <div className="p-4 bg-slate-50 dark:bg-slate-950/50 rounded-xl border border-border/50 max-h-[600px] overflow-y-auto shadow-inner">
+          <div className="mt-6 border rounded-xl overflow-hidden">
+            <div className="bg-muted px-4 py-2 border-b flex justify-between items-center">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Chat Histórico
+              </p>
+              <span className="text-xs text-muted-foreground">{messages.length} mensagens</span>
+            </div>
+            
+            <div 
+              ref={scrollRef}
+              className="p-4 h-[500px] overflow-y-auto bg-[#e5ddd5] dark:bg-[#0b141a]"
+              style={{ 
+                backgroundImage: "url('/chat-bg.jpg')",
+                backgroundSize: 'cover', // Ajusta para cobrir o container
+                backgroundPosition: 'center',
+                backgroundBlendMode: 'overlay' // Suaviza com a cor de fundo
+              }}
+            >
               <div className="flex flex-col gap-1">
-                {renderDescription(description)}
+                {messages.length === 0 ? (
+                  <p className="text-sm text-center text-gray-500 bg-white/80 dark:bg-black/50 p-2 rounded mx-auto inline-block">
+                    Nenhuma mensagem legível encontrada.
+                  </p>
+                ) : (
+                  messages.map((msg, idx) => (
+                    <ChatMessageBubble
+                      key={idx}
+                      role={msg.role}
+                      time={msg.time}
+                      name={msg.name}
+                      message={msg.message}
+                      isContinuation={msg.isContinuation}
+                    />
+                  ))
+                )}
               </div>
             </div>
           </div>
