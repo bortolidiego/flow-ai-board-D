@@ -77,17 +77,11 @@ serve(async (req) => {
       .select('*')
       .eq('pipeline_id', pipelineId)
       .single();
-
-    if (!slaConfig) {
-      // Config padrão se não existir
-      return new Response(
-        JSON.stringify({ 
-          cardId, 
-          sla: { status: 'ok', elapsedMinutes: 0, remainingMinutes: 60, targetMinutes: 60 } 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+      
+    // Definições padrão se não houver config
+    const firstResponseMinutes = slaConfig?.first_response_minutes || 60;
+    const ongoingResponseMinutes = slaConfig?.ongoing_response_minutes || 1440; // 24h
+    const warningThreshold = slaConfig?.warning_threshold_percent || 80;
 
     const columnName = (card.columns as any).name;
     
@@ -105,15 +99,12 @@ serve(async (req) => {
     // Determinar target SLA baseado na coluna
     let targetMinutes: number;
     
-    if (columnName === 'Novo Contato') {
+    if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
       // Primeira resposta: SLA de primeiro contato
-      targetMinutes = slaConfig.first_response_minutes;
-    } else if (['Em Atendimento', 'Aguardando'].includes(columnName)) {
-      // Atendimento em andamento: SLA de resposta contínua
-      targetMinutes = slaConfig.ongoing_response_minutes;
+      targetMinutes = firstResponseMinutes;
     } else {
       // Fallback: usar SLA de resposta contínua
-      targetMinutes = slaConfig.ongoing_response_minutes;
+      targetMinutes = ongoingResponseMinutes;
     }
 
     // Calcular tempo decorrido desde created_at
@@ -130,7 +121,7 @@ serve(async (req) => {
     
     if (elapsedMinutes >= targetMinutes) {
       status = 'overdue';
-    } else if (percentElapsed >= slaConfig.warning_threshold_percent) {
+    } else if (percentElapsed >= warningThreshold) {
       status = 'warning';
     } else {
       status = 'ok';

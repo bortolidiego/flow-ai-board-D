@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, AlertCircle, Building2, Plug } from 'lucide-react';
+import { Brain as BrainIcon, Settings, Database, GitBranch, Sparkles, Columns3, Target, CheckCircle2, AlertCircle, Building2, Plug, Timer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { MovementRulesManager } from '@/components/MovementRulesManager';
 import { InactivityRulesManager } from '@/components/InactivityRulesManager';
 import { AIPromptBuilder } from '@/components/AIPromptBuilder';
 import { ChatwootSettings } from '@/components/ChatwootSettings';
+import { SLAConfigManager } from '@/components/SLAConfigManager';
 import { IntegrationStatusBadge } from '@/components/IntegrationStatusBadge';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -335,7 +336,7 @@ const Brain = () => {
           )}
 
           <Tabs defaultValue="stages" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="stages" className="flex items-center gap-2">
                 <Columns3 className="w-4 h-4" />
                 Etapas
@@ -347,6 +348,10 @@ const Brain = () => {
               <TabsTrigger value="funnels" className="flex items-center gap-2">
                 <Target className="w-4 h-4" />
                 Funis
+              </TabsTrigger>
+              <TabsTrigger value="sla" className="flex items-center gap-2">
+                <Timer className="w-4 h-4" />
+                SLA / Prazos
               </TabsTrigger>
               <TabsTrigger value="card-movement" className="flex items-center gap-2">
                 <GitBranch className="w-4 h-4" />
@@ -384,6 +389,12 @@ const Brain = () => {
               <FunnelLifecycleManager 
                 pipelineId={pipeline.id}
                 onUpdate={fetchPipeline}
+              />
+            </TabsContent>
+
+            <TabsContent value="sla" className="space-y-4">
+              <SLAConfigManager 
+                pipelineId={pipeline.id}
               />
             </TabsContent>
 
