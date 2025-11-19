@@ -320,7 +320,6 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
           <ConversationSummary
             summary={card?.conversation_summary}
             description={card?.description}
-            agentName={card?.chatwoot_agent_name}
           />
 
           {/* Ciclo de Vida */}

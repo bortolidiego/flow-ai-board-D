@@ -6,7 +6,6 @@ import { useRef, useEffect } from 'react';
 interface ConversationSummaryProps {
   summary?: string;
   description?: string;
-  agentName?: string;
 }
 
 type Role = 'agent' | 'client' | 'system';
@@ -19,24 +18,34 @@ interface ParsedMessage {
   isContinuation?: boolean;
 }
 
+/**
+ * Limpa formatação de nomes (remove * e :)
+ */
 function cleanName(raw: string): string {
   return raw
-    .replace(/[*:]/g, '')
-    .replace(/🧑‍💼|👤/g, '')
-    .replace(/\b(Atendente|Agente|Cliente)\b/gi, '')
+    .replace(/[*:]/g, '') // Remove asteriscos e dois pontos
+    .replace(/🧑‍💼|👤/g, '') // Remove emojis
+    .replace(/\b(Atendente|Agente|Cliente)\b/gi, '') // Remove labels técnicos
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+/**
+ * Tenta extrair data/hora de strings variadas
+ */
 function extractTime(raw: string): string | undefined {
+  // Tenta formato [DD/MM/YYYY HH:mm] ou [HH:mm]
   const bracketMatch = raw.match(/\[(.*?)\]/);
   if (bracketMatch) return bracketMatch[1];
+  
+  // Tenta encontrar hora solta HH:mm no final ou início
   const timeMatch = raw.match(/\b\d{1,2}:\d{2}\b/);
   if (timeMatch) return timeMatch[0];
+  
   return undefined;
 }
 
-export const ConversationSummary = ({ summary, description, agentName }: ConversationSummaryProps) => {
+export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,115 +61,108 @@ export const ConversationSummary = ({ summary, description, agentName }: Convers
     const parsedMessages: ParsedMessage[] = [];
     
     let lastRole: Role = 'system';
-    let lastName: string = 'Sistema';
-    let pendingTime: string | undefined = undefined;
+    let lastName: string | undefined = undefined;
 
     lines.forEach((line) => {
       const raw = line.trim();
-
-      // 1. System Events
-      if (/conversa.*encerrad|transferid|atribuíd|iniciada|etiqueta/i.test(raw)) {
-         const timeMatch = raw.match(/^\[(.*?)\]/);
-         parsedMessages.push({
-           role: 'system',
-           time: timeMatch ? timeMatch[1] : undefined,
-           message: raw.replace(/^\[.*?\]\s*/, ''),
-           isContinuation: false
-         });
-         return;
-      }
-
-      // 2. Check for Header lines (Header ONLY, no content)
-      // Matches: [19/11 14:18] *Diego Bortoli:* 
-      // Matches: *Diego Bortoli:*
-      const headerOnlyRegex = /^(\[(.*?)\])?\s*(?:[*-]?\s*)?(?:(🧑‍💼|👤)\s*)?([^*:]+?)(?:\s*[:*]+)?$/;
-      const headerMatch = raw.match(headerOnlyRegex);
       
-      // Ensure it's not a simple short message by checking specific header traits or if it ends in colon
-      // The regex above is generous, so we verify if it ends with colon or is wrapped in *
-      const isExplicitHeader = raw.endsWith(':') || raw.endsWith(':*') || /^\*.*\*:?$/.test(raw);
+      // --- TENTATIVA 1: Formato Novo Padronizado ---
+      // Ex: [14/11 10:00] 🧑‍💼 Atendente Diego: Olá
+      const standardRegex = /^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*(?:Atendente|Agente|Cliente)?\s*)?([^:]+):\s*(.+)$/i;
+      const standardMatch = raw.match(standardRegex);
 
-      if (isExplicitHeader && headerMatch) {
-        const time = headerMatch[2];
-        const rawName = headerMatch[4];
-        const name = cleanName(rawName);
-        
-        if (time) pendingTime = time;
-        
-        // Determine role
-        let newRole: Role = 'client';
-        const lowerName = name.toLowerCase();
-        const lowerAgentName = agentName?.toLowerCase();
-
-        if (/\b(atendente|agente|kb tech|suporte)\b/.test(lowerName)) {
-          newRole = 'agent';
-        } else if (lowerAgentName && lowerName.includes(lowerAgentName)) {
-          newRole = 'agent';
-        } else if (lowerAgentName && lowerName === lowerAgentName) {
-          newRole = 'agent';
-        } else if (lastRole === 'agent' && lastName === name) {
-          // Keep previous if name matches
-          newRole = 'agent';
-        } else {
-          newRole = 'client';
-        }
-
-        lastRole = newRole;
-        lastName = name;
-        return; // Consumed as header
-      }
-
-      // 3. Standard/Combined Message Line (Header + Content)
-      const standardMatch = raw.match(/^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*)?([^:]+):\s*(.+)$/);
       if (standardMatch) {
         const time = standardMatch[1];
+        const marker = standardMatch[2] || '';
         const rawName = standardMatch[3];
         const content = standardMatch[4];
         const name = cleanName(rawName);
-        
+
         let role: Role = 'client';
-        const lowerName = name.toLowerCase();
-        if (/\b(atendente|agente|suporte)\b/.test(lowerName) || (agentName && lowerName.includes(agentName.toLowerCase()))) {
+        if (marker === '🧑‍💼' || /\b(atendente|agente|suporte)\b/i.test(rawName)) {
           role = 'agent';
+        } else if (marker === '👤') {
+          role = 'client';
+        } else {
+          // Fallback por nome se não tiver emoji
+          role = name.toLowerCase().includes('bot') ? 'system' : 'client';
         }
 
         lastRole = role;
         lastName = name;
-        pendingTime = undefined;
 
-        parsedMessages.push({
-          role,
-          time,
-          name,
-          message: content,
-          isContinuation: false
-        });
+        parsedMessages.push({ role, time, name, message: content, isContinuation: false });
         return;
       }
 
-      // 4. Content Line (using context from Header)
+      // --- TENTATIVA 2: Formato Antigo / Chatwoot Clássico ---
+      // Ex: *Diego Bortoli:* Mensagem
+      // Ex: Diego Bortoli: Mensagem
+      const legacyRegex = /^(\*?[^*:]+\*?):\s*(.+)$/;
+      const legacyMatch = raw.match(legacyRegex);
+
+      if (legacyMatch) {
+        const rawName = legacyMatch[1];
+        const content = legacyMatch[2];
+        const name = cleanName(rawName);
+        
+        // Tenta achar hora dentro do conteúdo (alguns formatos colocam no fim)
+        let time = extractTime(raw);
+        
+        // Limpa a mensagem se a hora estiver nela
+        let cleanContent = content;
+        if (time) {
+             cleanContent = content.replace(`[${time}]`, '').trim();
+        }
+
+        // Inferir role
+        // Se não temos certeza, assumimos cliente, a menos que seja o mesmo nome do último agente conhecido
+        let role: Role = 'client'; 
+        if (lastRole === 'agent' && lastName === name) {
+            role = 'agent';
+        }
+
+        lastRole = role;
+        lastName = name;
+
+        parsedMessages.push({ role, time, name, message: cleanContent, isContinuation: false });
+        return;
+      }
+
+      // --- TENTATIVA 3: Mensagens de Sistema ---
+      if (
+        /conversa.*encerrad/i.test(raw) ||
+        /transferid/i.test(raw) ||
+        /atribuíd/i.test(raw) ||
+        /iniciada/i.test(raw) ||
+        /etiqueta/i.test(raw)
+      ) {
+        const time = extractTime(raw);
+        const message = raw.replace(/\[.*?\]/, '').trim();
+        
+        parsedMessages.push({ role: 'system', time, message, isContinuation: false });
+        return;
+      }
+
+      // --- TENTATIVA 4: Continuação (linhas soltas) ---
+      // "oieee", "opa tudo bem"
+      // Assume que pertence à última pessoa que falou
       if (lastRole !== 'system') {
-         const isSameUser = parsedMessages.length > 0 && 
-                            parsedMessages[parsedMessages.length - 1].role === lastRole &&
-                            parsedMessages[parsedMessages.length - 1].name === lastName;
-                            
-         parsedMessages.push({
-           role: lastRole,
-           time: pendingTime, // Apply pending time
-           name: lastName,
-           message: raw,
-           isContinuation: !pendingTime && isSameUser // If we have new time, it's a new bubble
-         });
-         pendingTime = undefined;
+        parsedMessages.push({
+          role: lastRole,
+          name: lastName,
+          message: raw,
+          isContinuation: true, // Isso agrupa visualmente
+          time: undefined // Geralmente continuações imediatas não têm hora nova repetida
+        });
       } else {
-         // Fallback for content without context
-         parsedMessages.push({
-            role: 'client',
-            message: raw,
-            isContinuation: false
-         });
-         lastRole = 'client';
-         lastName = 'Cliente';
+        // Se começou com linha solta sem contexto, trata como sistema ou cliente default
+        parsedMessages.push({
+          role: 'client', // Default seguro
+          message: raw,
+          isContinuation: false
+        });
+        lastRole = 'client';
       }
     });
 
