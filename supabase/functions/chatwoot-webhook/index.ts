@@ -5,7 +5,6 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 // --- TYPES & SCHEMAS ---
 
-// Relaxed schema to ensure we capture attachments regardless of structure changes
 const ChatwootWebhookSchema = z.object({
   id: z.number().optional(),
   event: z.enum(["conversation_created", "message_created", "message_updated", "conversation_updated"]),
@@ -28,7 +27,6 @@ const ChatwootWebhookSchema = z.object({
   }).optional(),
   message_type: z.enum(["incoming", "outgoing"]).optional(),
   content: z.string().max(50000).nullable().optional(),
-  // Allow any structure for root attachments
   attachments: z.array(z.any()).optional().nullable(), 
   sender: z.object({
     type: z.string().max(50).optional(),
@@ -49,7 +47,6 @@ const ChatwootWebhookSchema = z.object({
       name: z.string().max(200).optional(),
       email: z.string().email().max(255).optional().nullable(),
     }).optional().nullable(),
-    // Allow any structure for message attachments
     attachments: z.array(z.any()).optional().nullable(), 
   }).optional(),
 });
@@ -128,19 +125,12 @@ class WebhookService {
     }
   }
 
-  async transcribeAudioIfNeeded(attachments: any[] | null | undefined): Promise<string | null> {
-    // Debug logging for attachments
-    if (!attachments) {
-      console.log("No attachments found in payload.");
-      return null;
-    }
-    
-    if (attachments.length === 0) {
-      console.log("Attachments array is empty.");
+  async transcribeAudioIfNeeded(attachments: any[] | null | undefined, chatwootApiKey: string): Promise<string | null> {
+    if (!attachments || attachments.length === 0) {
       return null;
     }
 
-    console.log("Processing attachments:", JSON.stringify(attachments));
+    console.log("Processing attachments for transcription...");
 
     const audioAttachment = attachments.find((att: any) => 
       att.file_type === 'audio' || 
@@ -149,11 +139,13 @@ class WebhookService {
 
     if (audioAttachment && audioAttachment.data_url) {
       console.log("Audio attachment found:", audioAttachment.data_url);
-      console.log("Invoking audio-transcribe function...");
       
       try {
         const { data, error } = await this.supabase.functions.invoke('audio-transcribe', {
-          body: { fileUrl: audioAttachment.data_url },
+          body: { 
+            url: audioAttachment.data_url,
+            chatwoot_api_key: chatwootApiKey 
+          },
           headers: { Authorization: `Bearer ${this.supabaseKey}` }
         });
 
@@ -162,9 +154,9 @@ class WebhookService {
           return "[Áudio não transcrito - erro]";
         }
         
-        if (data?.text) {
-          console.log("Audio transcribed successfully:", data.text.substring(0, 50) + "...");
-          return `[Áudio transcrito]: ${data.text}`;
+        if (data?.transcript) {
+          console.log("Audio transcribed successfully:", data.transcript.substring(0, 50) + "...");
+          return `[Áudio transcrito]: ${data.transcript}`;
         }
         
         console.log("Audio transcribed but no text returned.");
@@ -173,8 +165,6 @@ class WebhookService {
         console.error("Failed to invoke audio-transcribe:", err);
         return "[Erro na chamada de transcrição]";
       }
-    } else {
-      console.log("No valid audio attachment found in list.");
     }
 
     return null;
@@ -183,7 +173,7 @@ class WebhookService {
   async checkIntegration(accountId: string) {
     const { data, error } = await this.supabase
       .from("chatwoot_integrations")
-      .select("active, account_id, inbox_id, pipelines(id, columns(id, name, position))")
+      .select("active, account_id, inbox_id, chatwoot_api_key, pipelines(id, columns(id, name, position))")
       .eq("account_id", accountId)
       .maybeSingle();
 
@@ -254,11 +244,6 @@ serve(async (req) => {
     const rawWebhook = await req.json();
     console.log("Received Chatwoot webhook event:", rawWebhook?.event);
 
-    // LOG RAW ATTACHMENTS FOR DEBUGGING
-    if (rawWebhook.attachments) console.log("RAW Root Attachments:", JSON.stringify(rawWebhook.attachments));
-    if (rawWebhook.message?.attachments) console.log("RAW Message Attachments:", JSON.stringify(rawWebhook.message.attachments));
-
-    // Validate Payload
     let webhook;
     try {
       webhook = ChatwootWebhookSchema.parse(rawWebhook);
@@ -321,13 +306,12 @@ serve(async (req) => {
       });
     }
 
-    console.log("Integration ACTIVE for account:", accountId);
-
     let content = webhook.content || message?.content;
-    // Check both locations for attachments
     const attachments = message?.attachments || webhook.attachments || [];
 
-    const transcribedText = await service.transcribeAudioIfNeeded(attachments);
+    // Transcribe audio using the API key from the integration settings
+    const transcribedText = await service.transcribeAudioIfNeeded(attachments, integration.chatwoot_api_key);
+    
     if (transcribedText) {
       content = transcribedText;
     } else if (!content && attachments.length > 0) {
@@ -345,7 +329,6 @@ serve(async (req) => {
 
       if (existingCard) {
         if (event === "conversation_updated") {
-          console.log("Updating card metadata for conversation:", conversationIdStr);
           const updateData: any = {
             assignee: conversation?.assignee?.name || existingCard.assignee,
             chatwoot_contact_name: conversation?.meta?.sender?.name || existingCard.chatwoot_contact_name,
@@ -360,13 +343,10 @@ serve(async (req) => {
           });
         }
 
-        console.log(`Processing ${event} for conversation:`, conversationIdStr);
-
         const signature = computeSignature(messageId, conversationIdStr, effectiveSender?.name, derivedMessageType, content);
         if (signature) {
           const isDuplicate = await service.checkDuplicateEvent(signature);
           if (isDuplicate) {
-            console.log('Duplicate event signature, skipping.');
             return new Response(JSON.stringify({ message: 'Duplicate event ignored' }), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
@@ -374,7 +354,6 @@ serve(async (req) => {
         }
 
         if (isDuplicateContent(existingCard.description, content)) {
-          console.log('Duplicate message content ignored.');
           return new Response(JSON.stringify({ message: 'Duplicate content ignored', cardId: existingCard.id }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
@@ -422,7 +401,6 @@ serve(async (req) => {
       const signature = `conv_created:${conversationIdStr}`;
       const isDuplicate = await service.checkDuplicateEvent(signature);
       if (isDuplicate) {
-        console.log('Duplicate conversation_created event, skipping.');
         return new Response(JSON.stringify({ message: 'Duplicate event ignored' }), {
            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -448,7 +426,6 @@ serve(async (req) => {
     if (conversationInboxId && integration.inbox_id) {
       const allowedInboxIds = integration.inbox_id.split(",").map((id: string) => id.trim());
       if (!allowedInboxIds.includes(conversationInboxId)) {
-         console.log("Ignoring conversation from different inbox. Allowed:", allowedInboxIds, "Got:", conversationInboxId);
          return new Response(JSON.stringify({ message: "Conversation ignored - inbox filter mismatch" }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
          });
