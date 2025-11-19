@@ -229,16 +229,17 @@ const KanbanBoard = () => {
 
   if (workspaceLoading || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl">
-        <div className={cn("container mx-auto py-4", isMobile ? "px-3" : "px-6")}>
+    <div className="h-full flex flex-col bg-gradient-to-br from-background via-background to-primary/5 overflow-hidden">
+      {/* Header */}
+      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl shrink-0">
+        <div className={cn("w-full py-4", isMobile ? "px-3" : "px-6")}>
           <div className={cn("gap-3", isMobile ? "flex flex-col" : "flex items-center justify-between")}>
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -336,70 +337,78 @@ const KanbanBoard = () => {
         </div>
       </div>
 
-      <main className={cn("container mx-auto py-8", isMobile ? "px-3" : "px-6")}>
-        <KanbanFilters
-          filters={filters}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-          updateFilter={updateFilter}
-          updateCustomFieldFilter={updateCustomFieldFilter}
-          resetFilters={resetFilters}
-          activeFiltersCount={activeFiltersCount}
-          totalCards={cards.length}
-          filteredCount={filteredCards.length}
-          cards={cards}
-          savedViews={savedViews}
-          saveView={saveView}
-          loadView={loadView}
-          deleteView={deleteView}
-        />
-
-        {/* Rest of the component remains the same */}
-        {selectionMode && selectedCardIds.size > 0 && (
-          <div className="mb-4">
-            <BulkActionsBar
-              selectedCount={selectedCardIds.size}
-              onCancel={() => {
-                setSelectedCardIds(new Set());
-                setSelectionMode(false);
-              }}
-              onDelete={handleBulkDelete}
-              onTransfer={handleBulkTransfer}
-              columns={pipeline?.columns || []}
+      {/* Main Content Area - No padding on wrapper to maximize space */}
+      <main className="flex-1 flex flex-col w-full overflow-hidden relative">
+        
+        {/* Filters Bar - Fixed at top of main area */}
+        <div className={cn("shrink-0 z-10 bg-background/50 backdrop-blur-sm border-b border-border/10", isMobile ? "px-3 py-3" : "px-6 py-3")}>
+           <KanbanFilters
+              filters={filters}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              updateFilter={updateFilter}
+              updateCustomFieldFilter={updateCustomFieldFilter}
+              resetFilters={resetFilters}
+              activeFiltersCount={activeFiltersCount}
+              totalCards={cards.length}
+              filteredCount={filteredCards.length}
+              cards={cards}
+              savedViews={savedViews}
+              saveView={saveView}
+              loadView={loadView}
+              deleteView={deleteView}
             />
-          </div>
-        )}
 
+            {selectionMode && selectedCardIds.size > 0 && (
+              <div className="mt-2">
+                <BulkActionsBar
+                  selectedCount={selectedCardIds.size}
+                  onCancel={() => {
+                    setSelectedCardIds(new Set());
+                    setSelectionMode(false);
+                  }}
+                  onDelete={handleBulkDelete}
+                  onTransfer={handleBulkTransfer}
+                  columns={pipeline?.columns || []}
+                />
+              </div>
+            )}
+        </div>
+
+        {/* Kanban Board Area */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className={cn(
-            "pb-4",
-            isMobile
-              ? "flex flex-col gap-4 space-y-4"
-              : "flex gap-4 overflow-x-auto pb-4 min-h-[600px]"
+            "flex-1 min-h-0", // min-h-0 is critical for nested flex scrolling
+            isMobile 
+              ? "overflow-y-auto px-3 pb-20 pt-4" // Mobile: Vertical scroll
+              : "overflow-x-auto overflow-y-hidden px-6 pt-4 pb-2" // Desktop: Horizontal scroll, padding INSIDE scroll container
           )}>
-            {pipeline?.columns.map((column) => {
-              const columnCards = getColumnCards(column.id);
-              
-              // Somar valor dos cards visíveis na coluna
-              const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
+            <div className={cn(
+                "h-full",
+                isMobile ? "flex flex-col gap-4" : "flex gap-4 min-w-max" // min-w-max ensures columns don't shrink
+            )}>
+              {pipeline?.columns.map((column) => {
+                const columnCards = getColumnCards(column.id);
+                const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
 
-              return (
-                <KanbanColumn
-                  key={column.id}
-                  id={column.id}
-                  title={column.name}
-                  cards={columnCards}
-                  count={columnCards.length}
-                  totalValue={columnTotalValue}
-                  onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
-                  pipelineConfig={pipelineConfig}
-                  selectionMode={selectionMode}
-                  selectedCardIds={selectedCardIds}
-                  onSelectCard={toggleCardSelection}
-                  onSelectAllColumn={selectColumnCards}
-                />
-              );
-            })}
+                return (
+                  <KanbanColumn
+                    key={column.id}
+                    id={column.id}
+                    title={column.name}
+                    cards={columnCards}
+                    count={columnCards.length}
+                    totalValue={columnTotalValue}
+                    onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
+                    pipelineConfig={pipelineConfig}
+                    selectionMode={selectionMode}
+                    selectedCardIds={selectedCardIds}
+                    onSelectCard={toggleCardSelection}
+                    onSelectAllColumn={selectColumnCards}
+                  />
+                );
+              })}
+            </div>
           </div>
 
           <DragOverlay>
