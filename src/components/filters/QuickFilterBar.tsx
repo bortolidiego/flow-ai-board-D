@@ -1,73 +1,57 @@
 import { Button } from '@/components/ui/button';
-import { KanbanFilters as KanbanFiltersType, QuickFilter } from '@/types/kanbanFilters';
-import { User, TrendingUp, Lock, Clock, DollarSign } from 'lucide-react';
+import { SavedView } from '@/types/kanbanFilters';
+import { X, Bookmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 
 interface QuickFilterBarProps {
-  updateFilter: <K extends keyof KanbanFiltersType>(key: K, value: KanbanFiltersType[K]) => void;
+  savedViews: SavedView[];
+  loadView: (id: string) => void;
+  deleteView: (id: string) => void;
   isMobile: boolean;
 }
 
-export function QuickFilterBar({ updateFilter, isMobile }: QuickFilterBarProps) {
-  const quickFilters: QuickFilter[] = [
-    {
-      id: 'monetary-locked',
-      label: 'Monetárias 🔒',
-      icon: Lock,
-      apply: () => ({ isMonetaryLocked: true }),
-    },
-    {
-      id: 'closing',
-      label: 'Em Fechamento',
-      icon: TrendingUp,
-      apply: () => ({ progressRange: { min: 70, max: 100 } }),
-    },
-    {
-      id: 'stagnant',
-      label: 'Estagnadas',
-      icon: Clock,
-      apply: () => ({ inactivityDays: 7 }),
-    },
-    {
-      id: 'unassigned',
-      label: 'Sem Atendente',
-      icon: User,
-      apply: () => ({ isUnassigned: true }),
-    },
-    {
-      id: 'high-value',
-      label: 'Alto Valor',
-      icon: DollarSign,
-      apply: () => ({ valueRange: { min: 5000, max: Infinity } }),
-    },
-  ];
-
-  const handleQuickFilter = (filter: QuickFilter) => {
-    const newFilters = filter.apply({} as any);
-    Object.entries(newFilters).forEach(([key, value]) => {
-      // @ts-ignore
-      updateFilter(key, value);
-    });
-  };
+export function QuickFilterBar({ savedViews, loadView, deleteView, isMobile }: QuickFilterBarProps) {
+  if (savedViews.length === 0) {
+    return (
+      <div className="py-2 text-xs text-muted-foreground italic flex items-center gap-2">
+        <Bookmark className="w-3 h-3" />
+        Seus filtros salvos aparecerão aqui
+      </div>
+    );
+  }
 
   return (
-    <div className={cn("flex gap-2 items-center", isMobile ? "grid grid-cols-2" : "flex-wrap")}>
-      {!isMobile && <span className="text-xs text-muted-foreground">Filtros Rápidos:</span>}
-      {quickFilters.map(filter => {
-        const Icon = filter.icon;
-        return (
+    <div className={cn(
+      "flex gap-2 items-center overflow-x-auto pb-2 scrollbar-thin", 
+      isMobile ? "flex-wrap" : "flex-nowrap"
+    )}>
+      <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">Filtros Salvos:</span>
+      
+      {savedViews.map(view => (
+        <div key={view.id} className="group relative flex-shrink-0">
           <Button
-            key={filter.id}
             variant="outline"
             size="sm"
-            onClick={() => handleQuickFilter(filter)}
-            className={cn("h-8", isMobile && "justify-start text-xs")}
+            onClick={() => loadView(view.id)}
+            className={cn(
+              "h-7 text-xs pr-7 border-dashed hover:border-solid hover:border-primary/50 transition-all", 
+              "bg-background hover:bg-accent"
+            )}
           >
-            <Icon className="h-3 w-3 mr-1" />
-            {filter.label}
+            {view.name}
           </Button>
-        );
-      })}
+          <div 
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteView(view.id);
+            }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 cursor-pointer hover:bg-destructive/10 rounded-full transition-colors"
+          >
+            <X className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

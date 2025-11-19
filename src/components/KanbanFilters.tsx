@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Search, SlidersHorizontal, Save } from 'lucide-react';
+import { Search, Filter, Save, Plus } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,19 +9,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
 import { KanbanFilters as KanbanFiltersType, SortOption } from '@/types/kanbanFilters';
 import { Card } from '@/hooks/useKanbanData';
 import { cn } from '@/lib/utils';
 import { AdvancedFiltersContent } from './filters/AdvancedFiltersContent';
-import { ActiveFilters } from './filters/ActiveFilters';
 import { QuickFilterBar } from './filters/QuickFilterBar';
 
 interface KanbanFiltersProps {
@@ -29,6 +20,7 @@ interface KanbanFiltersProps {
   sortBy: SortOption;
   setSortBy: (sort: SortOption) => void;
   updateFilter: <K extends keyof KanbanFiltersType>(key: K, value: KanbanFiltersType[K]) => void;
+  updateCustomFieldFilter: (field: string, value: any) => void; // Adicionado
   resetFilters: () => void;
   activeFiltersCount: number;
   totalCards: number;
@@ -43,8 +35,9 @@ interface KanbanFiltersProps {
 export const KanbanFilters = ({
   filters,
   sortBy,
-  setSortBy,
+  // setSortBy, // Pode ser reativado se precisar de ordenação na UI principal
   updateFilter,
+  updateCustomFieldFilter,
   resetFilters,
   activeFiltersCount,
   totalCards,
@@ -53,168 +46,145 @@ export const KanbanFilters = ({
   savedViews,
   saveView,
   loadView,
+  deleteView,
 }: KanbanFiltersProps) => {
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [newViewName, setNewViewName] = useState('');
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [newFilterName, setNewFilterName] = useState('');
   const isMobile = useIsMobile();
 
-  // Extract unique values for filters
-  const uniqueValues = useMemo(() => ({
-    priorities: Array.from(new Set(cards.map(c => c.priority).filter(Boolean))),
-    assignees: Array.from(new Set(cards.map(c => c.assignee).filter(Boolean))),
-    funnelTypes: Array.from(new Set(cards.map(c => c.funnelType).filter(Boolean))),
-    products: Array.from(new Set(cards.map(c => c.productItem).filter(Boolean))),
-    inboxes: Array.from(new Set(cards.map(c => c.inboxName).filter(Boolean))),
-    lifecycleStages: Array.from(new Set(cards.map(c => c.currentLifecycleStage).filter(Boolean))),
-  }), [cards]);
+  // Extract unique values for filters safely
+  const uniqueValues = useMemo(() => {
+    const assignees = new Set<string>();
+    const funnelTypes = new Set<string>();
+    const products = new Set<string>();
+    const lostReasons = new Set<string>();
+    const lifecycleStages = new Set<string>();
+    const customFieldKeys = new Set<string>();
 
-  const handleSaveView = () => {
-    if (newViewName.trim()) {
-      saveView(newViewName.trim());
-      setNewViewName('');
-      setShowSaveDialog(false);
+    cards.forEach(c => {
+      if (c.assignee) assignees.add(c.assignee);
+      if (c.chatwootAgentName) assignees.add(c.chatwootAgentName);
+      if (c.funnelType) funnelTypes.add(c.funnelType);
+      if (c.productItem) products.add(c.productItem);
+      if (c.lossReason) lostReasons.add(c.lossReason);
+      if (c.currentLifecycleStage) lifecycleStages.add(c.currentLifecycleStage);
+      
+      if (c.customFieldsData) {
+        Object.keys(c.customFieldsData).forEach(k => customFieldKeys.add(k));
+      }
+    });
+
+    return {
+      assignees: Array.from(assignees),
+      funnelTypes: Array.from(funnelTypes),
+      products: Array.from(products),
+      lostReasons: Array.from(lostReasons),
+      lifecycleStages: Array.from(lifecycleStages),
+      customFields: Array.from(customFieldKeys)
+    };
+  }, [cards]);
+
+  const handleSaveFilter = () => {
+    if (newFilterName.trim()) {
+      saveView(newFilterName.trim());
+      setNewFilterName('');
     }
   };
 
   return (
-    <div className={cn("space-y-3 mb-4", isMobile && "px-1")}>
-      {/* Search and Main Actions */}
-      <div className={cn("flex gap-2 items-center", isMobile ? "flex-col" : "flex-wrap")}>
-        <div className={cn("relative", isMobile ? "w-full" : "flex-1 min-w-[200px]")}>
+    <div className={cn("flex flex-col gap-3 mb-4", isMobile && "px-1")}>
+      
+      {/* Top Bar: Search + Filter Button + Save Action */}
+      <div className="flex items-center gap-2 w-full">
+        
+        {/* Search Input */}
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="Buscar cards..."
+            placeholder="Buscar por nome, título..."
             value={filters.search}
             onChange={(e) => updateFilter('search', e.target.value)}
-            className="pl-9"
+            className="pl-9 h-9 bg-background/60 backdrop-blur-sm"
           />
         </div>
 
-        <div className={cn("flex gap-2", isMobile && "w-full")}>
-          <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortOption)}>
-            <SelectTrigger className={cn(isMobile ? "flex-1" : "w-[200px]")}>
-              <SelectValue placeholder="Ordenar" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="progress-desc">🔥 Maior Progresso</SelectItem>
-              <SelectItem value="lastActivity-desc">⚡ Atividade Recente</SelectItem>
-              <SelectItem value="value-desc">💰 Maior Valor</SelectItem>
-              <SelectItem value="priority-desc">🔴 Alta Prioridade</SelectItem>
-              <SelectItem value="createdAt-desc">🆕 Mais Recentes</SelectItem>
-              <Separator />
-              <SelectItem value="progress-asc">Menor Progresso</SelectItem>
-              <SelectItem value="lastActivity-asc">Menos Ativo</SelectItem>
-              <SelectItem value="value-asc">Menor Valor</SelectItem>
-              <SelectItem value="createdAt-asc">Mais Antigos</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Popover open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
-            <PopoverTrigger asChild>
-              <Button 
-                variant="outline" 
-                type="button"
-                className={cn(isMobile && "flex-1")}
-              >
-                <SlidersHorizontal className="h-4 w-4 mr-2 pointer-events-none" />
-                Filtros
-                {activeFiltersCount > 0 && (
-                  <Badge variant="secondary" className="ml-2 pointer-events-none">{activeFiltersCount}</Badge>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent 
-              className="w-[90vw] sm:w-[420px] max-h-[80vh] overflow-y-auto" 
-              align="end"
-              sideOffset={5}
+        {/* Filter Toggle Button */}
+        <Popover open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
+          <PopoverTrigger asChild>
+            <Button 
+              variant={activeFiltersCount > 0 ? "secondary" : "outline"} 
+              size="sm"
+              className={cn("h-9 px-3", activeFiltersCount > 0 && "border-primary/50 bg-primary/10 text-primary")}
             >
+              <Filter className="h-4 w-4 mr-2" />
+              Filtros
+              {activeFiltersCount > 0 && (
+                <Badge variant="primary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent 
+            className="w-[340px] sm:w-[400px] p-0 overflow-hidden" 
+            align="end" 
+            sideOffset={8}
+          >
+            <div className="p-4 bg-muted/10 border-b">
+              <h4 className="font-semibold text-sm">Configurar Filtros</h4>
+            </div>
+            <div className="p-2">
               <AdvancedFiltersContent
                 filters={filters}
                 updateFilter={updateFilter}
+                updateCustomFieldFilter={updateCustomFieldFilter}
                 resetFilters={resetFilters}
-                activeFiltersCount={activeFiltersCount}
                 uniqueValues={uniqueValues}
               />
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        {savedViews.length > 0 && (
-          <Select onValueChange={loadView}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Visões Salvas" />
-            </SelectTrigger>
-            <SelectContent>
-              {savedViews.map(view => (
-                <SelectItem key={view.id} value={view.id}>
-                  {view.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        <Button
-          variant="outline"
-          size="default"
-          onClick={() => setShowSaveDialog(!showSaveDialog)}
-        >
-          <Save className="h-4 w-4 mr-2" />
-          Salvar Visão
-        </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
-      {/* Quick Filters */}
-      <QuickFilterBar 
-        updateFilter={updateFilter}
-        isMobile={isMobile}
-      />
-
-      {/* Active Filters Display */}
-      {activeFiltersCount > 0 && (
-        <ActiveFilters 
-          filters={filters}
-          updateFilter={updateFilter}
+      {/* Quick Filters (Saved Views) Row */}
+      <div className="flex items-center justify-between gap-4 min-h-[32px]">
+        <QuickFilterBar 
+          savedViews={savedViews}
+          loadView={loadView}
+          deleteView={deleteView}
+          isMobile={isMobile}
         />
-      )}
 
-      {/* Results Counter */}
-      {(!isMobile || activeFiltersCount > 0) && (
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>
-            {filteredCount} de {totalCards} cards
-            {activeFiltersCount > 0 && (
-              <Button
-                variant="link"
-                size="sm"
-                onClick={resetFilters}
-                className="ml-2 h-auto p-0 text-xs"
-              >
-                Limpar filtros
-              </Button>
-            )}
-          </span>
-        </div>
-      )}
+        {/* Save Current View Input (Minimalist) */}
+        {activeFiltersCount > 0 && (
+          <div className="flex items-center gap-2 flex-shrink-0 animate-in fade-in duration-300">
+             <Input 
+               placeholder="Nome do filtro..." 
+               className="h-7 w-[120px] text-xs bg-transparent border-dashed hover:border-solid transition-all"
+               value={newFilterName}
+               onChange={(e) => setNewFilterName(e.target.value)}
+               onKeyDown={(e) => e.key === 'Enter' && handleSaveFilter()}
+             />
+             <Button 
+               size="sm" 
+               variant="ghost" 
+               className="h-7 w-7 p-0 hover:bg-primary/10 hover:text-primary"
+               onClick={handleSaveFilter}
+               disabled={!newFilterName.trim()}
+             >
+               <Plus className="h-4 w-4" />
+             </Button>
+          </div>
+        )}
+      </div>
 
-      {/* Save View Dialog */}
-      {showSaveDialog && (
-        <div className="flex gap-2 items-center p-3 border rounded-lg bg-muted/50">
-          <Input
-            placeholder="Nome da visão..."
-            value={newViewName}
-            onChange={(e) => setNewViewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSaveView()}
-          />
-          <Button onClick={handleSaveView} size="sm">
-            Salvar
-          </Button>
-          <Button onClick={() => setShowSaveDialog(false)} variant="ghost" size="sm">
-            Cancelar
-          </Button>
-        </div>
-      )}
+      {/* Result Counter (Subtle) */}
+      <div className="flex justify-end">
+         <span className="text-[10px] text-muted-foreground">
+            Mostrando {filteredCount} de {totalCards} cards
+         </span>
+      </div>
+
     </div>
   );
 };

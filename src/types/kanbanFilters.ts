@@ -1,23 +1,34 @@
 export interface KanbanFilters {
   search: string;
-  priority: string[];
-  assignee: string[];
-  funnelType: string[];
-  valueRange: { min: number; max: number } | null;
-  productItem: string[];
-  inboxName: string[];
   
-  // Filtros de ciclo de vida
+  // Pessoas
+  assignee: string[]; // Agentes
+  
+  // Funil e Estágios
+  funnelType: string[];
   lifecycleStages: string[];
-  progressRange: { min: number; max: number } | null;
-  isMonetaryLocked: boolean | null;
+  
+  // Métricas (Ranges)
+  funnelScoreRange: { min: number; max: number } | null; // Chance de Negócio (0-100)
+  qualityScoreRange: { min: number; max: number } | null; // Qualidade (0-100)
+  valueRange: { min: number; max: number } | null; // Valor Monetário
+  
+  // Detalhes do Negócio
+  productItem: string[]; // Produtos
+  lostReasons: string[]; // Motivos de Perda
+  
+  // Status e Tempo
   resolutionStatus: string[];
   inactivityDays: number | null;
+  dateRange: { start: Date | null; end: Date | null };
   
-  // Mantidos
+  // Flags Booleanas
+  isMonetaryLocked: boolean | null;
   isUnassigned: boolean | null;
   isReturningCustomer: boolean | null;
-  dateRange: { start: Date | null; end: Date | null };
+  
+  // Campos Personalizados (Chave: Nome do campo, Valor: Valor do filtro)
+  customFields: Record<string, any>;
 }
 
 export type SortOption = 
@@ -40,9 +51,4 @@ export interface SavedView {
   createdAt: Date;
 }
 
-export interface QuickFilter {
-  id: string;
-  label: string;
-  icon: any;
-  apply: (filters: KanbanFilters) => Partial<KanbanFilters>;
-}
+// Removida interface QuickFilter antiga pois agora são dinâmicos

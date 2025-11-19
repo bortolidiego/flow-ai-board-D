@@ -44,6 +44,7 @@ const KanbanBoard = () => {
     sortBy,
     setSortBy,
     updateFilter,
+    updateCustomFieldFilter, // New function
     resetFilters,
     filteredCards,
     activeFiltersCount,
@@ -63,6 +64,8 @@ const KanbanBoard = () => {
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const isMobile = useIsMobile();
+
+  // ... (rest of the functions remain the same: handleReanalyzeAll, toggleSelectionMode, etc)
 
   const handleReanalyzeAll = async () => {
     if (!pipeline) {
@@ -341,6 +344,7 @@ const KanbanBoard = () => {
           sortBy={sortBy}
           setSortBy={setSortBy}
           updateFilter={updateFilter}
+          updateCustomFieldFilter={updateCustomFieldFilter}
           resetFilters={resetFilters}
           activeFiltersCount={activeFiltersCount}
           totalCards={cards.length}
@@ -352,6 +356,7 @@ const KanbanBoard = () => {
           deleteView={deleteView}
         />
 
+        {/* Rest of the component remains the same */}
         {selectionMode && selectedCardIds.size > 0 && (
           <div className="mb-4">
             <BulkActionsBar
