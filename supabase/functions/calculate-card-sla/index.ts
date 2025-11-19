@@ -14,6 +14,7 @@ interface SLAStatus {
   elapsedMinutes: number;
   remainingMinutes: number;
   targetMinutes: number;
+  strategy: string;
 }
 
 serve(async (req) => {
@@ -78,14 +79,15 @@ serve(async (req) => {
       .eq('pipeline_id', pipelineId)
       .single();
       
-    // Definições padrão se não houver config
+    // Definições padrão
     const firstResponseMinutes = slaConfig?.first_response_minutes || 60;
     const ongoingResponseMinutes = slaConfig?.ongoing_response_minutes || 1440; // 24h
     const warningThreshold = slaConfig?.warning_threshold_percent || 80;
+    const strategy = slaConfig?.sla_strategy || 'response_time';
 
     const columnName = (card.columns as any).name;
     
-    // Cards finalizados não têm SLA
+    // Cards finalizados (coluna) não têm SLA
     if (columnName === 'Finalizados') {
       return new Response(
         JSON.stringify({ 
@@ -96,18 +98,26 @@ serve(async (req) => {
       );
     }
     
-    // Determinar target SLA baseado na coluna
     let targetMinutes: number;
     
-    if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
-      // Primeira resposta: SLA de primeiro contato
-      targetMinutes = firstResponseMinutes;
-    } else {
-      // Fallback: usar SLA de resposta contínua
+    // LÓGICA DE CÁLCULO BASEADA NA ESTRATÉGIA
+    if (strategy === 'resolution_time') {
+      // Estratégia: Tempo Total de Resolução
+      // O alvo é sempre o "ongoing_response_minutes" (usado como campo de tempo total)
       targetMinutes = ongoingResponseMinutes;
+    } else {
+      // Estratégia: Tempo de Resposta (Por Etapa)
+      if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
+        targetMinutes = firstResponseMinutes;
+      } else {
+        targetMinutes = ongoingResponseMinutes;
+      }
     }
 
     // Calcular tempo decorrido desde created_at
+    // Nota: Para SLA de resposta por etapa, idealmente usaríamos "last_activity_at" ou tempo na coluna
+    // Mas para simplificação inicial, "created_at" serve para "Resolução Total" e "Novo Contato"
+    // Para "Ongoing Response" (outras colunas), created_at pode ser agressivo, mas é o padrão atual.
     const now = new Date();
     const createdAt = new Date(card.created_at);
     const elapsedMs = now.getTime() - createdAt.getTime();
@@ -131,7 +141,8 @@ serve(async (req) => {
       status,
       elapsedMinutes,
       remainingMinutes,
-      targetMinutes
+      targetMinutes,
+      strategy
     };
 
     return new Response(
