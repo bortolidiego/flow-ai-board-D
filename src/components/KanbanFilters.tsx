@@ -56,6 +56,7 @@ export const KanbanFilters = ({
 }: KanbanFiltersProps) => {
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [newViewName, setNewViewName] = useState('');
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const isMobile = useIsMobile();
 
   // Extract unique values for filters
@@ -132,7 +133,7 @@ export const KanbanFilters = ({
       {/* Search and Main Actions */}
       <div className={cn("flex gap-2 items-center", isMobile ? "flex-col" : "flex-wrap")}>
         <div className={cn("relative", isMobile ? "w-full" : "flex-1 min-w-[200px]")}>
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="Buscar cards..."
             value={filters.search}
@@ -160,17 +161,25 @@ export const KanbanFilters = ({
             </SelectContent>
           </Select>
 
-          <Popover>
+          <Popover open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
             <PopoverTrigger asChild>
-              <Button variant="outline" className={cn(isMobile && "flex-1")}>
-                <SlidersHorizontal className="h-4 w-4 mr-2" />
+              <Button 
+                variant="outline" 
+                type="button"
+                className={cn(isMobile && "flex-1")}
+              >
+                <SlidersHorizontal className="h-4 w-4 mr-2 pointer-events-none" />
                 Filtros
                 {activeFiltersCount > 0 && (
-                  <Badge variant="secondary" className="ml-2">{activeFiltersCount}</Badge>
+                  <Badge variant="secondary" className="ml-2 pointer-events-none">{activeFiltersCount}</Badge>
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[420px] max-h-[650px] overflow-y-auto" align="end">
+            <PopoverContent 
+              className="w-[90vw] sm:w-[420px] max-h-[80vh] overflow-y-auto" 
+              align="end"
+              sideOffset={5}
+            >
               <div className="space-y-4">
                 {/* Header */}
                 <div className="flex items-center justify-between sticky top-0 bg-background pb-2 border-b z-10">
