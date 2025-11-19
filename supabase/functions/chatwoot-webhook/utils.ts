@@ -1,3 +1,4 @@
+// @ts-nocheck
 export function sanitizeHTML(input: string): string {
   if (!input) return "";
   let sanitized = input.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");

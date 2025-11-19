@@ -222,15 +222,10 @@ serve(async (req) => {
 
     // Verify Inboxes filter
     const conversationInboxId = conversation?.inbox_id?.toString();
-    // Check logic for specific inboxes...
-    // (Simplifying logic here: assuming integration object contains the pipelines joined)
-    // In services.ts checkIntegration returns pipelines joined.
     
     // Filter columns
-    // Note: checkIntegration returns single object with pipelines. 
-    // If multiple pipelines exist for account, we pick first (current logic limitation, but consistent with previous)
     const integrationData: any = integration; 
-    const pipeline = integrationData.pipelines; // This is an object due to single relation, or null
+    const pipeline = integrationData.pipelines; 
     if (!pipeline) {
       return new Response(JSON.stringify({ error: "No pipeline configured for integration" }), {
          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -238,8 +233,15 @@ serve(async (req) => {
     }
 
     // Check Inbox Filter if present in integration
-    // *Assuming `integration` row has `inbox_id` field - wait, the query in service only selected active/account_id/pipelines*
-    // Let's fix the query in services to include inbox_id
+    if (conversationInboxId && integration.inbox_id) {
+      const allowedInboxIds = integration.inbox_id.split(",").map((id: string) => id.trim());
+      if (!allowedInboxIds.includes(conversationInboxId)) {
+         console.log("Ignoring conversation from different inbox. Allowed:", allowedInboxIds, "Got:", conversationInboxId);
+         return new Response(JSON.stringify({ message: "Conversation ignored - inbox filter mismatch" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+      }
+    }
     
     const firstColumn = pipeline.columns?.find((c: any) => c.name === "Novo Contato") || 
                         pipeline.columns?.sort((a: any, b: any) => a.position - b.position)[0];
