@@ -3,11 +3,11 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-// Schema mais flexível para lidar com variações do payload
+// Schema atualizado para incluir telefone e atributos adicionais
 const ChatwootWebhookSchema = z.object({
   id: z.number().optional(),
   event: z.enum(["conversation_created", "message_created", "message_updated", "conversation_updated"]),
-  account_id: z.number().optional(), // Chatwoot as vezes manda na raiz
+  account_id: z.number().optional(),
   conversation: z.object({
     id: z.number(),
     inbox_id: z.number().optional(),
@@ -22,6 +22,8 @@ const ChatwootWebhookSchema = z.object({
       sender: z.object({
         name: z.string().max(200).optional(),
         email: z.string().email().max(255).optional().nullable(),
+        phone_number: z.string().optional().nullable(),
+        additional_attributes: z.record(z.any()).optional().nullable(),
       }).optional(),
     }).optional(),
   }).optional(),
@@ -91,6 +93,28 @@ function isDuplicateContent(existingDescription, newContent) {
   return recentLines.includes(newContent.trim());
 }
 
+// Helper para extrair nome do cliente de forma robusta
+function getCustomerName(contactMeta: any, sender: any, isAgent: boolean): string {
+  // 1. Tenta nome no metadados da conversa (fonte mais confiável do contato)
+  let name = contactMeta?.name;
+
+  // Se nome for inválido ou genérico, tenta outras fontes
+  if (!name || name.toLowerCase() === 'no name' || name.trim() === '') {
+    // 2. Tenta telefone
+    if (contactMeta?.phone_number) return contactMeta.phone_number;
+    
+    // 3. Tenta email
+    if (contactMeta?.email) return contactMeta.email;
+    
+    // 4. Se for mensagem recebida (cliente), tenta nome do sender
+    if (!isAgent && sender?.name) return sender.name;
+    
+    return "Cliente sem nome"; // Fallback final
+  }
+
+  return name;
+}
+
 class WebhookService {
   constructor(private supabase: SupabaseClient, private supabaseKey: string) {}
 
@@ -102,7 +126,6 @@ class WebhookService {
   }
 
   async checkIntegration(accountId: string) {
-    // CORREÇÃO CRÍTICA: Adicionado join para buscar pipelines e columns
     const { data } = await this.supabase
       .from("chatwoot_integrations")
       .select(`
@@ -126,11 +149,6 @@ class WebhookService {
     return data;
   }
   
-  async findFinalizedCard(conversationId: string) {
-    const { data } = await this.supabase.from("cards").select("customer_profile_id").eq("chatwoot_conversation_id", conversationId).not("completion_type", "is", null).maybeSingle();
-    return data;
-  }
-
   async checkDuplicateEvent(signature: string) {
     const { error } = await this.supabase.from('chatwoot_processed_events').insert({ signature });
     return error?.code === '23505';
@@ -142,11 +160,6 @@ class WebhookService {
 
   async createCard(data: any) {
     return await this.supabase.from("cards").insert(data).select().single();
-  }
-
-  async updateCustomerStats(profileId: string) {
-    await this.supabase.rpc("increment_customer_stat", { profile_id: profileId, stat_field: "total_interactions" });
-    await this.supabase.from("customer_profiles").update({ last_contact_at: new Date().toISOString() }).eq("id", profileId);
   }
 }
 
@@ -181,8 +194,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ message: "Event ignored" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
     }
 
-    // Robust account ID extraction
-    const extractedAccountId = account?.id || account_id || conversation?.id; // Fallback seguro
+    const extractedAccountId = account?.id || account_id || conversation?.id;
     if (!extractedAccountId) {
        console.error("Payload missing account ID:", JSON.stringify(rawWebhook));
        throw new Error("No account ID found in payload");
@@ -204,30 +216,30 @@ serve(async (req) => {
     const derivedMessageType = message?.message_type || message_type;
     const conversationIdStr = conversation?.id.toString();
 
-    // Limpeza de HTML
     content = sanitizeHTML(content || "");
 
-    // IGNORAR MENSAGENS VAZIAS OU "LIXO"
     const senderNameCheck = sender?.name || "";
     if (content && (content === `*${senderNameCheck}*` || content === `*${senderNameCheck}:*`)) {
        return new Response(JSON.stringify({ message: "Empty/System message ignored" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
     }
 
-    // Determinação de Papel
+    // Determinação de Papel para a MENSAGEM
     const isAgent = derivedMessageType === "outgoing";
-    let displayName;
+    let messageSenderName;
     if (isAgent) {
-      displayName = sender?.name || conversation?.assignee?.name || "Atendente";
+      messageSenderName = sender?.name || conversation?.assignee?.name || "Atendente";
     } else {
-      displayName = sender?.name || conversation?.meta?.sender?.name || "Cliente";
+      messageSenderName = sender?.name || conversation?.meta?.sender?.name || "Cliente";
     }
+
+    // Determinação do Nome do Cliente para o CARD (Fixo)
+    const customerName = getCustomerName(conversation?.meta?.sender, sender, isAgent);
 
     const roleEmoji = isAgent ? "🧑‍💼" : "👤";
     const roleLabel = isAgent ? "Atendente" : "Cliente";
     const timestamp = getFormattedTimestamp();
     
-    // Formato padronizado
-    const formattedMessage = `[${timestamp}] ${roleEmoji} ${roleLabel} ${displayName}: ${content || "Mensagem"}`;
+    const formattedMessage = `[${timestamp}] ${roleEmoji} ${roleLabel} ${messageSenderName}: ${content || "Mensagem"}`;
 
     if (conversationIdStr && ["message_created", "message_updated", "conversation_updated"].includes(event)) {
       const existingCard = await service.findExistingCard(conversationIdStr);
@@ -237,11 +249,18 @@ serve(async (req) => {
         if (event === "conversation_updated") {
            const updateData: any = { updated_at: new Date().toISOString() };
            if (conversation?.assignee?.name) updateData.chatwoot_agent_name = conversation.assignee.name;
+           
+           // Atualiza título se estava genérico
+           if (existingCard.title.includes("Cliente sem nome") && customerName !== "Cliente sem nome") {
+              updateData.title = `${customerName} - ${conversation?.inbox?.name || "Nova"}`;
+              updateData.chatwoot_contact_name = customerName;
+           }
+
            await service.updateCardMetadata(existingCard.id, updateData);
            return new Response(JSON.stringify({ success: true }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
         }
 
-        const signature = computeSignature(messageId, conversationIdStr, displayName, derivedMessageType, content);
+        const signature = computeSignature(messageId, conversationIdStr, messageSenderName, derivedMessageType, content);
         if (signature && await service.checkDuplicateEvent(signature)) {
            return new Response(JSON.stringify({ message: "Duplicate" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
         }
@@ -264,34 +283,27 @@ serve(async (req) => {
       }
     }
 
-    // LÓGICA DE CRIAÇÃO
+    // LÓGICA DE CRIAÇÃO DE NOVO CARD
     if (!conversationIdStr) throw new Error("No conversation ID");
 
-    // Pegar colunas da relação carregada no checkIntegration
     const pipeline = integration.pipelines;
-    
-    if (!pipeline) {
-      console.error("Integration exists but has no pipeline linked", integration);
-      throw new Error("Pipeline not found for integration");
-    }
+    if (!pipeline) throw new Error("Pipeline not found for integration");
 
-    // Ordenar colunas por posição para pegar a primeira
     const columns = pipeline.columns?.sort((a: any, b: any) => a.position - b.position);
     const firstColumn = columns?.[0];
-    
-    if (!firstColumn) {
-      console.error("Pipeline has no columns", pipeline);
-      throw new Error("No columns found in pipeline");
-    }
+    if (!firstColumn) throw new Error("No columns found in pipeline");
 
     const cardData: any = {
        column_id: firstColumn.id,
-       title: `${displayName} - ${conversation?.inbox?.name || "Nova"}`,
+       // Título SEMPRE com nome do cliente
+       title: `${customerName} - ${conversation?.inbox?.name || "Nova"}`,
        description: formattedMessage,
        priority: determinePriority(formattedMessage),
        chatwoot_conversation_id: conversationIdStr,
-       chatwoot_contact_name: !isAgent ? displayName : undefined, // Só salva se for cliente
-       chatwoot_agent_name: isAgent ? displayName : conversation?.assignee?.name,
+       // Salva nome do contato explicitamente
+       chatwoot_contact_name: customerName,
+       // Salva agente se houver
+       chatwoot_agent_name: conversation?.assignee?.name || (isAgent ? messageSenderName : undefined),
        inbox_name: conversation?.inbox?.name
     };
     
