@@ -14,6 +14,7 @@ interface SLAStatus {
   elapsedMinutes: number;
   remainingMinutes: number;
   targetMinutes: number;
+  basis: 'resolution' | 'response';
 }
 
 serve(async (req) => {
@@ -40,6 +41,7 @@ serve(async (req) => {
         id,
         created_at,
         updated_at,
+        last_activity_at,
         completion_type,
         columns!inner(
           name,
@@ -64,7 +66,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           cardId, 
-          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 } 
+          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0, basis: 'resolution' } 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -82,15 +84,16 @@ serve(async (req) => {
     const firstResponseMinutes = slaConfig?.first_response_minutes || 60;
     const ongoingResponseMinutes = slaConfig?.ongoing_response_minutes || 1440; // 24h
     const warningThreshold = slaConfig?.warning_threshold_percent || 80;
+    const slaBasis = slaConfig?.sla_basis || 'resolution'; // 'resolution' ou 'response'
 
     const columnName = (card.columns as any).name;
     
-    // Cards finalizados não têm SLA
+    // Cards na coluna de finalizados (caso não tenham completion_type por algum erro) não têm SLA
     if (columnName === 'Finalizados') {
       return new Response(
         JSON.stringify({ 
           cardId, 
-          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 } 
+          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0, basis: slaBasis } 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -107,10 +110,21 @@ serve(async (req) => {
       targetMinutes = ongoingResponseMinutes;
     }
 
-    // Calcular tempo decorrido desde created_at
+    // Calcular tempo decorrido
     const now = new Date();
-    const createdAt = new Date(card.created_at);
-    const elapsedMs = now.getTime() - createdAt.getTime();
+    let referenceTime: Date;
+
+    if (slaBasis === 'response') {
+      // Baseado na última atividade (Inatividade)
+      // Prioridade: last_activity_at > updated_at > created_at
+      const activityTimeStr = card.last_activity_at || card.updated_at || card.created_at;
+      referenceTime = new Date(activityTimeStr);
+    } else {
+      // Baseado no tempo total de vida (Resolução)
+      referenceTime = new Date(card.created_at);
+    }
+
+    const elapsedMs = now.getTime() - referenceTime.getTime();
     const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
     
     const remainingMinutes = Math.max(0, targetMinutes - elapsedMinutes);
@@ -131,7 +145,8 @@ serve(async (req) => {
       status,
       elapsedMinutes,
       remainingMinutes,
-      targetMinutes
+      targetMinutes,
+      basis: slaBasis
     };
 
     return new Response(
