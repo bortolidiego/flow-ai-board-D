@@ -39,11 +39,12 @@ interface AdvancedFiltersContentProps {
   uniqueValues: {
     assignees: string[];
     funnelTypes: string[];
-    lifecycleStages: string[];
+    lifecycleStages: string[]; // Mantido para compatibilidade, mas não usado diretamente na UI
     products: string[];
     lostReasons: string[];
-    customFields: string[]; // Nomes dos campos disponíveis
+    customFields: string[];
   };
+  availableLifecycleStages: string[]; // Nova prop com etapas filtradas
 }
 
 export function AdvancedFiltersContent({
@@ -52,6 +53,7 @@ export function AdvancedFiltersContent({
   updateCustomFieldFilter,
   resetFilters,
   uniqueValues,
+  availableLifecycleStages,
 }: AdvancedFiltersContentProps) {
   
   // Generic multi-select toggle helper
@@ -137,13 +139,16 @@ export function AdvancedFiltersContent({
                 </div>
               </div>
 
-              {/* Só mostra etapas se houver funil selecionado ou se existirem etapas globais */}
-              {uniqueValues.lifecycleStages.length > 0 && (
+              {/* Mostra etapas filtradas ou todas se nenhum funil selecionado */}
+              {availableLifecycleStages.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs">Etapas do Ciclo</Label>
+                  <Label className="text-xs">
+                    Etapas do Ciclo 
+                    {filters.funnelType.length > 0 && <span className="text-muted-foreground ml-1">(Filtrado por funil)</span>}
+                  </Label>
                   <MultiSelectCombobox 
                     title="Selecionar Etapas"
-                    options={uniqueValues.lifecycleStages}
+                    options={availableLifecycleStages}
                     selected={filters.lifecycleStages}
                     onChange={(val) => updateFilter('lifecycleStages', val)}
                   />

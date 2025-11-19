@@ -20,7 +20,7 @@ interface KanbanFiltersProps {
   sortBy: SortOption;
   setSortBy: (sort: SortOption) => void;
   updateFilter: <K extends keyof KanbanFiltersType>(key: K, value: KanbanFiltersType[K]) => void;
-  updateCustomFieldFilter: (field: string, value: any) => void; // Adicionado
+  updateCustomFieldFilter: (field: string, value: any) => void;
   resetFilters: () => void;
   activeFiltersCount: number;
   totalCards: number;
@@ -32,10 +32,17 @@ interface KanbanFiltersProps {
   deleteView: (id: string) => void;
 }
 
+// Função auxiliar para limpar dados sujos (ex: "assistencia}," -> "assistencia")
+const cleanString = (str?: string | null): string | null => {
+  if (!str) return null;
+  // Remove }, ] e espaços do final da string
+  return str.replace(/[},\]\s]+$/, '').trim();
+};
+
 export const KanbanFilters = ({
   filters,
   sortBy,
-  // setSortBy, // Pode ser reativado se precisar de ordenação na UI principal
+  setSortBy,
   updateFilter,
   updateCustomFieldFilter,
   resetFilters,
@@ -52,22 +59,44 @@ export const KanbanFilters = ({
   const [newFilterName, setNewFilterName] = useState('');
   const isMobile = useIsMobile();
 
-  // Extract unique values for filters safely
+  // Extract unique values for filters safely and build relationships
   const uniqueValues = useMemo(() => {
     const assignees = new Set<string>();
     const funnelTypes = new Set<string>();
     const products = new Set<string>();
     const lostReasons = new Set<string>();
-    const lifecycleStages = new Set<string>();
+    const allLifecycleStages = new Set<string>();
     const customFieldKeys = new Set<string>();
+    
+    // Mapa para relacionar Funil -> Etapas
+    const funnelToStagesMap = new Map<string, Set<string>>();
 
     cards.forEach(c => {
       if (c.assignee) assignees.add(c.assignee);
       if (c.chatwootAgentName) assignees.add(c.chatwootAgentName);
-      if (c.funnelType) funnelTypes.add(c.funnelType);
+      
+      // Limpeza e agregação de Funil
+      const cleanFunnel = cleanString(c.funnelType);
+      if (cleanFunnel) {
+        funnelTypes.add(cleanFunnel);
+      }
+
       if (c.productItem) products.add(c.productItem);
       if (c.lossReason) lostReasons.add(c.lossReason);
-      if (c.currentLifecycleStage) lifecycleStages.add(c.currentLifecycleStage);
+      
+      // Limpeza e agregação de Etapas + Mapeamento
+      const cleanStage = cleanString(c.currentLifecycleStage);
+      if (cleanStage) {
+        allLifecycleStages.add(cleanStage);
+        
+        // Se temos funil E etapa, criar relação
+        if (cleanFunnel) {
+          if (!funnelToStagesMap.has(cleanFunnel)) {
+            funnelToStagesMap.set(cleanFunnel, new Set());
+          }
+          funnelToStagesMap.get(cleanFunnel)?.add(cleanStage);
+        }
+      }
       
       if (c.customFieldsData) {
         Object.keys(c.customFieldsData).forEach(k => customFieldKeys.add(k));
@@ -75,14 +104,37 @@ export const KanbanFilters = ({
     });
 
     return {
-      assignees: Array.from(assignees),
-      funnelTypes: Array.from(funnelTypes),
-      products: Array.from(products),
-      lostReasons: Array.from(lostReasons),
-      lifecycleStages: Array.from(lifecycleStages),
-      customFields: Array.from(customFieldKeys)
+      assignees: Array.from(assignees).sort(),
+      funnelTypes: Array.from(funnelTypes).sort(),
+      products: Array.from(products).sort(),
+      lostReasons: Array.from(lostReasons).sort(),
+      lifecycleStages: Array.from(allLifecycleStages).sort(),
+      customFields: Array.from(customFieldKeys).sort(),
+      funnelToStagesMap // Expor o mapa para uso no cálculo abaixo
     };
   }, [cards]);
+
+  // Calcular etapas disponíveis baseado nos funis selecionados
+  const availableLifecycleStages = useMemo(() => {
+    // Se nenhum funil selecionado, mostrar todas as etapas encontradas
+    if (filters.funnelType.length === 0) {
+      return uniqueValues.lifecycleStages;
+    }
+
+    // Se houver funis selecionados, unir as etapas correspondentes
+    const allowedStages = new Set<string>();
+    
+    filters.funnelType.forEach(selectedFunnel => {
+      // O selectedFunnel vem do filtro, precisamos garantir que bata com o mapa (que foi limpo)
+      // Assumimos que o filtro também armazena valores limpos se o usuário clicou neles
+      const stages = uniqueValues.funnelToStagesMap.get(selectedFunnel);
+      if (stages) {
+        stages.forEach(s => allowedStages.add(s));
+      }
+    });
+
+    return Array.from(allowedStages).sort();
+  }, [filters.funnelType, uniqueValues]);
 
   const handleSaveFilter = () => {
     if (newFilterName.trim()) {
@@ -140,6 +192,7 @@ export const KanbanFilters = ({
                 updateCustomFieldFilter={updateCustomFieldFilter}
                 resetFilters={resetFilters}
                 uniqueValues={uniqueValues}
+                availableLifecycleStages={availableLifecycleStages} // Passando a lista dinâmica
               />
             </div>
           </PopoverContent>
