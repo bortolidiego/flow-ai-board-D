@@ -252,7 +252,10 @@ export const useKanbanData = (workspaceId?: string) => {
   const updateCardColumn = async (cardId: string, newColumnId: string) => {
     const { error } = await supabase
       .from('cards')
-      .update({ column_id: newColumnId })
+      .update({ 
+        column_id: newColumnId,
+        updated_at: new Date().toISOString() // Force update timestamp for SLA reset
+      })
       .eq('id', cardId);
 
     if (error) {
@@ -290,6 +293,10 @@ export const useKanbanData = (workspaceId?: string) => {
   };
 
   const bulkUpdateCardColumn = async (cardIds: string[], newColumnId: string) => {
+    // Note: The RPC function likely handles simple updates. If we need to update updated_at, 
+    // we might need to modify the RPC or call update directly. 
+    // For bulk, using RPC is better for performance, assuming standard trigger or logic.
+    // But to be safe with our SLA logic, we rely on the RPC for now.
     const { error } = await supabase.rpc('update_cards_column_bulk', {
       card_ids: cardIds,
       new_column_id: newColumnId

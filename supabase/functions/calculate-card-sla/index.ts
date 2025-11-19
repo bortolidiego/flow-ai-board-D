@@ -41,6 +41,7 @@ serve(async (req) => {
         id,
         created_at,
         updated_at,
+        last_activity_at,
         completion_type,
         columns!inner(
           name,
@@ -60,7 +61,7 @@ serve(async (req) => {
       );
     }
 
-    // Se card está finalizado, SLA não se aplica
+    // Se card está finalizado, SLA não se aplica (completed)
     if (card.completion_type) {
       return new Response(
         JSON.stringify({ 
@@ -87,7 +88,7 @@ serve(async (req) => {
 
     const columnName = (card.columns as any).name;
     
-    // Cards finalizados (coluna) não têm SLA
+    // Cards na coluna "Finalizados" são considerados completed para SLA
     if (columnName === 'Finalizados') {
       return new Response(
         JSON.stringify({ 
@@ -99,32 +100,37 @@ serve(async (req) => {
     }
     
     let targetMinutes: number;
+    let baseTime: Date;
     
     // LÓGICA DE CÁLCULO BASEADA NA ESTRATÉGIA
     if (strategy === 'resolution_time') {
       // Estratégia: Tempo Total de Resolução
-      // O alvo é sempre o "ongoing_response_minutes" (usado como campo de tempo total)
+      // Conta desde a criação do card até agora
       targetMinutes = ongoingResponseMinutes;
+      baseTime = new Date(card.created_at);
     } else {
-      // Estratégia: Tempo de Resposta (Por Etapa)
+      // Estratégia: Tempo de Resposta (Por Etapa/Atividade)
+      
       if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
+        // Primeiro contato: conta desde a criação
         targetMinutes = firstResponseMinutes;
+        baseTime = new Date(card.created_at);
       } else {
+        // Resposta contínua: conta desde a última atividade ou atualização (mudança de coluna)
         targetMinutes = ongoingResponseMinutes;
+        
+        // Prioriza last_activity_at (interação real), fallback para updated_at (mudança de coluna), fallback created_at
+        const lastTime = card.last_activity_at || card.updated_at || card.created_at;
+        baseTime = new Date(lastTime);
       }
     }
 
-    // Calcular tempo decorrido desde created_at
-    // Nota: Para SLA de resposta por etapa, idealmente usaríamos "last_activity_at" ou tempo na coluna
-    // Mas para simplificação inicial, "created_at" serve para "Resolução Total" e "Novo Contato"
-    // Para "Ongoing Response" (outras colunas), created_at pode ser agressivo, mas é o padrão atual.
     const now = new Date();
-    const createdAt = new Date(card.created_at);
-    const elapsedMs = now.getTime() - createdAt.getTime();
+    const elapsedMs = now.getTime() - baseTime.getTime();
     const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
     
     const remainingMinutes = Math.max(0, targetMinutes - elapsedMinutes);
-    const percentElapsed = (elapsedMinutes / targetMinutes) * 100;
+    const percentElapsed = targetMinutes > 0 ? (elapsedMinutes / targetMinutes) * 100 : 100;
     
     // Determinar status
     let status: 'ok' | 'warning' | 'overdue';
