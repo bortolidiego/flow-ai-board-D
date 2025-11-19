@@ -23,41 +23,42 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   return (
     <div
       className={cn(
-        "w-full flex my-1",
+        "w-full flex my-1.5",
         isAgent ? "justify-end" : isClient ? "justify-start" : "justify-center"
       )}
     >
       <div
         className={cn(
-          "rounded-xl px-3 py-2 shadow-sm border max-w-[85%] text-sm",
-          isAgent && "bg-primary/10 border-primary/20 text-foreground rounded-tr-none",
-          isClient && "bg-secondary/10 border-secondary/20 text-foreground rounded-tl-none",
-          isSystem && "bg-muted/40 border-muted text-muted-foreground text-xs py-1"
+          "relative max-w-[85%] rounded-2xl px-4 py-2 text-sm shadow-sm",
+          isAgent && "bg-primary/10 text-foreground rounded-tr-none", // Balão do Agente
+          isClient && "bg-muted text-foreground rounded-tl-none", // Balão do Cliente
+          isSystem && "bg-transparent text-xs text-muted-foreground py-1 shadow-none italic" // Sistema
         )}
       >
-        <div className="inline leading-relaxed break-words">
+        {/* O segredo está aqui: Tudo dentro de um parágrafo para fluir na mesma linha */}
+        <p className="leading-relaxed whitespace-pre-wrap break-words">
           {/* Data/Hora */}
-          {time && (
-            <span className="mr-1.5 text-[10px] font-mono opacity-60 tabular-nums select-none">
+          {time && !isSystem && (
+            <span className="text-[10px] font-mono opacity-50 mr-2 select-none inline-block">
               [{time}]
             </span>
           )}
-          
-          {/* Nome */}
+
+          {/* Nome (Negrito e colorido) */}
           {!isSystem && name && (
-            <span className={cn(
-              "font-bold mr-1.5",
-              isAgent ? "text-primary" : "text-secondary-foreground"
-            )}>
+            <span
+              className={cn(
+                "font-bold text-xs mr-1.5",
+                isAgent ? "text-primary" : "text-blue-600 dark:text-blue-400"
+              )}
+            >
               {name}:
             </span>
           )}
 
-          {/* Mensagem */}
-          <span>
-            {message}
-          </span>
-        </div>
+          {/* Conteúdo da Mensagem (Vem logo ao lado) */}
+          <span>{message}</span>
+        </p>
       </div>
     </div>
   );
