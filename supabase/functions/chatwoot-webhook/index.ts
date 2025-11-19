@@ -254,27 +254,47 @@ serve(async (req) => {
             }
         }
 
-        const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+        // Novo formato de data: [DD/MM HH:mm]
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+        const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+        const timestamp = `${dateStr} ${timeStr}`;
+
         const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
-        const isContact = effectiveSender?.type === "Contact" || derivedMessageType === "incoming";
-        console.log("Message details:", { sender_type: effectiveSender?.type, message_type: derivedMessageType, isAgent, isContact, sender_name: effectiveSender?.name });
+        
+        // Formato: Agente ou Nome do Cliente
+        const senderName = effectiveSender?.name || (isAgent ? "Agente" : "Cliente");
+        // Se for Agente, forçamos o label "Agente" conforme solicitado, se for cliente, usamos o nome.
+        const displayName = isAgent ? "Agente" : senderName;
 
-        const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-        const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
+        // Verificação extra de duplicação lógica (para evitar spam de boas-vindas)
+        if (existingCard.description && content) {
+            const lines = existingCard.description.split('\n');
+            const lastLine = lines[lines.length - 1] || "";
+            // Se o conteúdo da última linha contiver exatamente a nova mensagem, ignoramos
+            if (lastLine.includes(content.trim())) {
+                console.log('Duplicate message content detected in description history, skipping update.');
+                return new Response(JSON.stringify({ message: 'Duplicate message content ignored', cardId: existingCard.id }), {
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                    status: 200
+                });
+            }
+        }
 
+        const formattedMessage = `[${timestamp}] ${displayName}: ${content || "Mensagem"}`;
         let updatedDescription: string;
+        
         if (event === "message_updated") {
           const lines = (existingCard.description || "").split("\n");
-          const updatedMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Mensagem editada"}`;
-          if (lines.length > 0 && lines[lines.length - 1].match(/^\[\d{2}:\d{2}\]/)) {
-            lines[lines.length - 1] = updatedMessage;
+          // Regex para encontrar linha com [DD/MM HH:mm] ou [HH:MM]
+          if (lines.length > 0 && lines[lines.length - 1].match(/^\[.*?\]/)) {
+            lines[lines.length - 1] = formattedMessage;
             updatedDescription = lines.join("\n");
           } else {
-            updatedDescription = existingCard.description ? `${existingCard.description}\n${updatedMessage}` : updatedMessage;
+            updatedDescription = existingCard.description ? `${existingCard.description}\n${formattedMessage}` : formattedMessage;
           }
         } else {
-          const newMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova mensagem"}`;
-          updatedDescription = existingCard.description ? `${existingCard.description}\n${newMessage}` : newMessage;
+          updatedDescription = existingCard.description ? `${existingCard.description}\n${formattedMessage}` : formattedMessage;
         }
 
         const allContent = updatedDescription.toLowerCase();
@@ -415,11 +435,16 @@ serve(async (req) => {
     if (contentLower.includes("urgente") || contentLower.includes("emergência")) priority = "high";
     else if (contentLower.includes("dúvida") || contentLower.includes("informação")) priority = "low";
 
-    const timestamp = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+    const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    const timestamp = `${dateStr} ${timeStr}`;
+
     const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
-    const senderLabel = isAgent ? "🧑‍💼 Atendente" : "👤 Cliente";
-    const senderName = effectiveSender?.name || (isAgent ? "Atendente" : "Cliente");
-    const initialMessage = `[${timestamp}] ${senderLabel} ${senderName}: ${content || "Nova conversa iniciada"}`;
+    const senderName = effectiveSender?.name || (isAgent ? "Agente" : "Cliente");
+    const displayName = isAgent ? "Agente" : senderName;
+    
+    const initialMessage = `[${timestamp}] ${displayName}: ${content || "Nova conversa iniciada"}`;
 
     const cardData: any = {
       column_id: firstColumn.id,

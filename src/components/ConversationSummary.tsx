@@ -19,10 +19,11 @@ type ParsedLine = {
 };
 
 /**
- * Tenta identificar timestamp [HH:MM]
+ * Tenta identificar timestamp [DD/MM HH:mm] ou [HH:MM]
  */
 function extractTime(line: string) {
-  const m = line.match(/\[(\d{2}:\d{2})\]/);
+  // Tenta capturar [DD/MM HH:mm] ou [HH:MM]
+  const m = line.match(/\[(\d{2}\/\d{2}\s\d{2}:\d{2}|\d{2}:\d{2})\]/);
   return m ? m[1] : undefined;
 }
 
@@ -30,7 +31,7 @@ function extractTime(line: string) {
  * Normaliza a linha removendo timestamp inicial
  */
 function stripTime(line: string) {
-  return line.replace(/^\s*\[\d{2}:\d{2}\]\s*/, '').trim();
+  return line.replace(/^\s*\[.*?\]\s*/, '').trim();
 }
 
 /**
@@ -40,7 +41,7 @@ function normalizeName(raw?: string) {
   if (!raw) return undefined;
   return raw
     .replace(/🧑‍💼|👤/g, '')
-    .replace(/\b(Atendente|Cliente)\b/gi, '')
+    .replace(/\b(Atendente|Agente|Cliente)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -61,13 +62,6 @@ function isSystemEvent(line: string) {
 
 /**
  * Detecta papel por keywords/emoji e extrai nome/mensagem
- * Aceita padrões:
- * [20:34] 🧑‍💼 Diego: mensagem
- * [20:34] 👤 João: mensagem
- * [20:34] Atendente Diego: mensagem
- * [20:34] Cliente João: mensagem
- * [20:34] Diego: mensagem
- * [20:34] Diego:
  */
 function parseLine(raw: string): ParsedLine {
   const time = extractTime(raw);
@@ -79,18 +73,21 @@ function parseLine(raw: string): ParsedLine {
     return { role: 'system', time, message: line };
   }
 
+  // Atualizado para incluir 'agente'
   const isAgent =
     line.includes('🧑‍💼') ||
-    /\batendente\b/.test(lower);
+    /\b(atendente|agente)\b/.test(lower);
+  
   const isClient =
     line.includes('👤') ||
     /\bcliente\b/.test(lower);
 
   // Regex ampla permitindo emojis/labels antes do nome
+  // Agora suporta "Agente Nome:" ou apenas "Nome:" se os emojis foram removidos
   const withMessage =
-    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Cliente)?\s*([^:]+):\s*(.+)$/i);
+    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Agente|Cliente)?\s*([^:]+):\s*(.+)$/i);
   const nameOnly =
-    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Cliente)?\s*([^:]+):\s*$/i);
+    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Agente|Cliente)?\s*([^:]+):\s*$/i);
 
   if (withMessage) {
     const name = normalizeName((withMessage[1] || '').trim());
@@ -107,7 +104,6 @@ function parseLine(raw: string): ParsedLine {
   }
 
   // Sem padrão explícito — tratar como mensagem "solta"
-  // Papel será herdado pelo renderizador
   return { role: 'unknown', time, message: line };
 }
 
