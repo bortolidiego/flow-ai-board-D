@@ -238,7 +238,7 @@ const KanbanBoard = () => {
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-background via-background to-primary/5 overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl shrink-0">
+      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl shrink-0 z-20 relative">
         <div className={cn("w-full py-4", isMobile ? "px-3" : "px-6")}>
           <div className={cn("gap-3", isMobile ? "flex flex-col" : "flex items-center justify-between")}>
             <div>
@@ -337,110 +337,107 @@ const KanbanBoard = () => {
         </div>
       </div>
 
-      {/* Main Content Area - No padding on wrapper to maximize space */}
-      <main className="flex-1 flex flex-col w-full overflow-hidden relative">
-        
-        {/* Filters Bar - Fixed at top of main area */}
-        <div className={cn("shrink-0 z-10 bg-background/50 backdrop-blur-sm border-b border-border/10", isMobile ? "px-3 py-3" : "px-6 py-3")}>
-           <KanbanFilters
-              filters={filters}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              updateFilter={updateFilter}
-              updateCustomFieldFilter={updateCustomFieldFilter}
-              resetFilters={resetFilters}
-              activeFiltersCount={activeFiltersCount}
-              totalCards={cards.length}
-              filteredCount={filteredCards.length}
-              cards={cards}
-              savedViews={savedViews}
-              saveView={saveView}
-              loadView={loadView}
-              deleteView={deleteView}
-            />
+      {/* Filters Bar - Fixed */}
+      <div className={cn("shrink-0 z-10 bg-background/50 backdrop-blur-sm border-b border-border/10 relative", isMobile ? "px-3 py-3" : "px-6 py-3")}>
+         <KanbanFilters
+            filters={filters}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            updateFilter={updateFilter}
+            updateCustomFieldFilter={updateCustomFieldFilter}
+            resetFilters={resetFilters}
+            activeFiltersCount={activeFiltersCount}
+            totalCards={cards.length}
+            filteredCount={filteredCards.length}
+            cards={cards}
+            savedViews={savedViews}
+            saveView={saveView}
+            loadView={loadView}
+            deleteView={deleteView}
+          />
 
-            {selectionMode && selectedCardIds.size > 0 && (
-              <div className="mt-2">
-                <BulkActionsBar
-                  selectedCount={selectedCardIds.size}
-                  onCancel={() => {
-                    setSelectedCardIds(new Set());
-                    setSelectionMode(false);
-                  }}
-                  onDelete={handleBulkDelete}
-                  onTransfer={handleBulkTransfer}
-                  columns={pipeline?.columns || []}
-                />
-              </div>
-            )}
-        </div>
+          {selectionMode && selectedCardIds.size > 0 && (
+            <div className="mt-2">
+              <BulkActionsBar
+                selectedCount={selectedCardIds.size}
+                onCancel={() => {
+                  setSelectedCardIds(new Set());
+                  setSelectionMode(false);
+                }}
+                onDelete={handleBulkDelete}
+                onTransfer={handleBulkTransfer}
+                columns={pipeline?.columns || []}
+              />
+            </div>
+          )}
+      </div>
 
-        {/* Kanban Board Area - SCROLL ÚNICO AQUI */}
-        <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          {/* Este div é o container de scroll geral */}
-          <div className={cn(
-            "flex-1 overflow-auto", // Scroll em ambas direções se necessário
-            isMobile ? "px-3 pt-4 pb-20" : "px-6 pt-4 pb-6"
-          )}>
-            {/* Este div força o conteúdo a ficar centralizado quando é menor que a tela, mas permite crescer */}
+      {/* Kanban Board Area - ÚNICO SCROLL DA PÁGINA */}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+        <div className={cn(
+          "flex-1 overflow-auto", // Este é o container de scroll principal (X e Y)
+          isMobile ? "px-3 pb-20 pt-4" : "px-6 pb-6 pt-4"
+        )}>
+          {/* 
+             TRUQUE PARA CENTRALIZAR SEM CORTAR O LADO ESQUERDO:
+             inline-flex + min-w-full + justify-center
+             Se o conteúdo for menor que a tela, justify-center centraliza.
+             Se for maior, min-w-full expande e o browser permite scroll normal da esquerda para direita.
+          */}
+          <div className="inline-flex min-w-full justify-center items-start">
             <div className={cn(
-                "flex",
-                isMobile ? "flex-col w-full" : "min-w-full w-max justify-center items-start" // w-max permite que cresça, justify-center centraliza se não crescer
+                "flex gap-4",
+                isMobile && "flex-col w-full" // Mobile: Pilha vertical
             )}>
-              <div className={cn(
-                  "flex gap-4",
-                  isMobile ? "flex-col w-full" : "flex-row"
-              )}>
-                {pipeline?.columns.map((column) => {
-                  const columnCards = getColumnCards(column.id);
-                  const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
+              {pipeline?.columns.map((column) => {
+                const columnCards = getColumnCards(column.id);
+                const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
 
-                  return (
-                    <KanbanColumn
-                      key={column.id}
-                      id={column.id}
-                      title={column.name}
-                      cards={columnCards}
-                      count={columnCards.length}
-                      totalValue={columnTotalValue}
-                      onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
-                      pipelineConfig={pipelineConfig}
-                      selectionMode={selectionMode}
-                      selectedCardIds={selectedCardIds}
-                      onSelectCard={toggleCardSelection}
-                      onSelectAllColumn={selectColumnCards}
-                    />
-                  );
-                })}
-              </div>
+                return (
+                  <KanbanColumn
+                    key={column.id}
+                    id={column.id}
+                    title={column.name}
+                    cards={columnCards}
+                    count={columnCards.length}
+                    totalValue={columnTotalValue}
+                    onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
+                    pipelineConfig={pipelineConfig}
+                    selectionMode={selectionMode}
+                    selectedCardIds={selectedCardIds}
+                    onSelectCard={toggleCardSelection}
+                    onSelectAllColumn={selectColumnCards}
+                  />
+                );
+              })}
             </div>
           </div>
+        </div>
 
-          <DragOverlay>
-            {activeCard && !selectionMode ? <KanbanCard {...activeCard} /> : null}
-          </DragOverlay>
-        </DndContext>
+        <DragOverlay>
+          {activeCard && !selectionMode ? <KanbanCard {...activeCard} /> : null}
+        </DragOverlay>
+      </DndContext>
 
-        <CardDetailDialog
-          cardId={selectedCardId}
-          open={selectedCardId !== null}
-          onOpenChange={(open) => !open && setSelectedCardId(null)}
-          pipelineConfig={pipelineConfig}
+      <CardDetailDialog
+        cardId={selectedCardId}
+        open={selectedCardId !== null}
+        onOpenChange={(open) => !open && setSelectedCardId(null)}
+        pipelineConfig={pipelineConfig}
+      />
+
+      {completionDialogOpen && cardToComplete && pipeline && (
+        <CardCompletionDialog
+          cardId={cardToComplete}
+          pipelineId={pipeline.id}
+          open={completionDialogOpen}
+          onOpenChange={setCompletionDialogOpen}
+          onCompleted={() => {
+            refreshCards();
+            setCardToComplete(null);
+          }}
         />
-
-        {completionDialogOpen && cardToComplete && pipeline && (
-          <CardCompletionDialog
-            cardId={cardToComplete}
-            pipelineId={pipeline.id}
-            open={completionDialogOpen}
-            onOpenChange={setCompletionDialogOpen}
-            onCompleted={() => {
-              refreshCards();
-              setCardToComplete(null);
-            }}
-          />
-        )}
-      </main>
+      )}
     </div>
   );
 };

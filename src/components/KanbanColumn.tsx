@@ -103,14 +103,16 @@ export const KanbanColumn = ({
       open={isMobile ? isOpen : true}
       onOpenChange={isMobile ? setIsOpen : undefined}
       className={cn(
-        "flex flex-col gap-3 h-full", // h-full para ocupar a altura do container pai
+        "flex flex-col gap-3", // Removed h-full so it grows naturally with content
         isMobile ? "w-full" : "w-[350px] min-w-[350px]"
       )}
     >
       <CollapsibleTrigger asChild>
+        {/* Sticky Header dentro da coluna para quando rolar muito para baixo, o título da coluna se manter se possível? 
+            Não, o usuário pediu scroll único, então o header da coluna vai rolar junto. */}
         <div 
           className={cn(
-            "flex items-center justify-between cursor-pointer rounded-lg transition-all sticky top-0 z-10", // Sticky se quiséssemos header fixo dentro do scroll geral, mas o pai já tem scroll
+            "flex items-center justify-between cursor-pointer rounded-lg transition-all",
             isMobile ? "px-3 py-3 bg-card/50 border border-border/50 hover:bg-card/70 active:scale-[0.98]" : "px-2 cursor-default",
             isMobile && isOpen && "bg-primary/10 border-primary/30"
           )}
@@ -180,8 +182,8 @@ export const KanbanColumn = ({
           ref={setNodeRef}
           className={cn(
             "flex-1 rounded-lg space-y-2 transition-colors backdrop-blur-sm border border-border/30",
-            // REMOVIDO: overflow-y-auto, h-calc, scrollbar. Agora a altura é automática.
-            isMobile ? "p-3 min-h-[100px]" : "p-2 min-h-[150px]", 
+            // SEM SCROLL INTERNO. Apenas padding mínimo.
+            isMobile ? "p-3 min-h-[100px]" : "p-2 pb-4 min-h-[150px]", 
             isOver ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-card/30'
           )}
         >
