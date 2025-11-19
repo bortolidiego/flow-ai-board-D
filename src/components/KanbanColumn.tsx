@@ -18,6 +18,7 @@ interface Card {
   aiSuggested?: boolean;
   createdAt: string;
   chatwootContactName?: string;
+  chatwootAgentName?: string;
   chatwootConversationId?: string;
   chatwootUrl?: string;
   chatwootAccountId?: string;
@@ -32,11 +33,23 @@ interface Card {
   winConfirmation?: string;
   lossReason?: string;
   customFieldsData?: Record<string, any>;
+  // Campos de ciclo de vida e completion
+  completionType?: 'won' | 'lost' | 'completed' | null;
+  completionReason?: string | null;
+  completedAt?: string | null;
+  completedBy?: string | null;
+  customerProfileId?: string | null;
+  currentLifecycleStage?: string | null;
+  lifecycleProgressPercent?: number;
+  resolutionStatus?: string | null;
+  isMonetaryLocked?: boolean;
+  lastActivityAt?: string | null;
 }
 
 interface PipelineConfig {
   customFields: any[];
   aiConfig?: any;
+  funnelTypes?: any[]; // Added missing type
 }
 
 interface KanbanColumnProps {
@@ -165,12 +178,13 @@ export const KanbanColumn = ({
         </div>
       </CollapsibleTrigger>
 
-      <CollapsibleContent>
+      <CollapsibleContent className="flex-1 flex flex-col min-h-0">
         <div
           ref={setNodeRef}
           className={cn(
             "flex-1 rounded-lg space-y-2 transition-colors backdrop-blur-sm border border-border/30",
-            isMobile ? "p-3 min-h-[300px]" : "p-2 h-[calc(100vh-280px)]",
+            // Adicionado overflow-y-auto e scrollbar-thin para scroll interno na coluna
+            isMobile ? "p-3 min-h-[300px]" : "p-2 h-[calc(100vh-13rem)] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/10 hover:scrollbar-thumb-primary/30",
             isOver ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-card/30'
           )}
         >

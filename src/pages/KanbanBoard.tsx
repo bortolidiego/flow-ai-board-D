@@ -381,11 +381,12 @@ const KanbanBoard = () => {
             "flex-1 min-h-0", // min-h-0 is critical for nested flex scrolling
             isMobile 
               ? "overflow-y-auto px-3 pb-20 pt-4" // Mobile: Vertical scroll
-              : "overflow-x-auto overflow-y-hidden px-6 pt-4 pb-2" // Desktop: Horizontal scroll, padding INSIDE scroll container
+              : "overflow-x-auto overflow-y-hidden px-6 pt-4 pb-2" // Desktop: Horizontal scroll
           )}>
             <div className={cn(
                 "h-full",
-                isMobile ? "flex flex-col gap-4" : "flex gap-4 min-w-max" // min-w-max ensures columns don't shrink
+                // Adicionado mx-auto para centralizar quando houver poucas colunas
+                isMobile ? "flex flex-col gap-4" : "flex gap-4 min-w-max mx-auto" 
             )}>
               {pipeline?.columns.map((column) => {
                 const columnCards = getColumnCards(column.id);
