@@ -12,6 +12,7 @@ export interface Card {
   createdAt: string;
   columnId: string;
   chatwootContactName?: string;
+  chatwootAgentName?: string; // Added field
   chatwootConversationId?: string;
   chatwootUrl?: string;
   chatwootAccountId?: string;
@@ -218,6 +219,7 @@ export const useKanbanData = (workspaceId?: string) => {
         createdAt: card.created_at,
         columnId: card.column_id,
         chatwootContactName: card.chatwoot_contact_name,
+        chatwootAgentName: card.chatwoot_agent_name, // Mapping added here
         chatwootConversationId: card.chatwoot_conversation_id,
         chatwootUrl: chatwootUrl,
         chatwootAccountId: chatwootAccountId,
@@ -237,6 +239,11 @@ export const useKanbanData = (workspaceId?: string) => {
         completedAt: card.completed_at,
         completedBy: card.completed_by,
         customerProfileId: card.customer_profile_id,
+        currentLifecycleStage: card.current_lifecycle_stage,
+        lifecycleProgressPercent: card.lifecycle_progress_percent,
+        resolutionStatus: card.resolution_status,
+        isMonetaryLocked: card.is_monetary_locked,
+        lastActivityAt: card.last_activity_at,
       }));
       setCards(formattedCards);
     }
