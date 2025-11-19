@@ -14,7 +14,7 @@ interface SLAStatus {
   elapsedMinutes: number;
   remainingMinutes: number;
   targetMinutes: number;
-  basis: 'resolution' | 'response';
+  strategy: string;
 }
 
 serve(async (req) => {
@@ -41,7 +41,6 @@ serve(async (req) => {
         id,
         created_at,
         updated_at,
-        last_activity_at,
         completion_type,
         columns!inner(
           name,
@@ -66,7 +65,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           cardId, 
-          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0, basis: 'resolution' } 
+          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 } 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -80,51 +79,48 @@ serve(async (req) => {
       .eq('pipeline_id', pipelineId)
       .single();
       
-    // Definições padrão se não houver config
+    // Definições padrão
     const firstResponseMinutes = slaConfig?.first_response_minutes || 60;
     const ongoingResponseMinutes = slaConfig?.ongoing_response_minutes || 1440; // 24h
     const warningThreshold = slaConfig?.warning_threshold_percent || 80;
-    const slaBasis = slaConfig?.sla_basis || 'resolution'; // 'resolution' ou 'response'
+    const strategy = slaConfig?.sla_strategy || 'response_time';
 
     const columnName = (card.columns as any).name;
     
-    // Cards na coluna de finalizados (caso não tenham completion_type por algum erro) não têm SLA
+    // Cards finalizados (coluna) não têm SLA
     if (columnName === 'Finalizados') {
       return new Response(
         JSON.stringify({ 
           cardId, 
-          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0, basis: slaBasis } 
+          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 } 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    // Determinar target SLA baseado na coluna
     let targetMinutes: number;
     
-    if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
-      // Primeira resposta: SLA de primeiro contato
-      targetMinutes = firstResponseMinutes;
-    } else {
-      // Fallback: usar SLA de resposta contínua
+    // LÓGICA DE CÁLCULO BASEADA NA ESTRATÉGIA
+    if (strategy === 'resolution_time') {
+      // Estratégia: Tempo Total de Resolução
+      // O alvo é sempre o "ongoing_response_minutes" (usado como campo de tempo total)
       targetMinutes = ongoingResponseMinutes;
-    }
-
-    // Calcular tempo decorrido
-    const now = new Date();
-    let referenceTime: Date;
-
-    if (slaBasis === 'response') {
-      // Baseado na última atividade (Inatividade)
-      // Prioridade: last_activity_at > updated_at > created_at
-      const activityTimeStr = card.last_activity_at || card.updated_at || card.created_at;
-      referenceTime = new Date(activityTimeStr);
     } else {
-      // Baseado no tempo total de vida (Resolução)
-      referenceTime = new Date(card.created_at);
+      // Estratégia: Tempo de Resposta (Por Etapa)
+      if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
+        targetMinutes = firstResponseMinutes;
+      } else {
+        targetMinutes = ongoingResponseMinutes;
+      }
     }
 
-    const elapsedMs = now.getTime() - referenceTime.getTime();
+    // Calcular tempo decorrido desde created_at
+    // Nota: Para SLA de resposta por etapa, idealmente usaríamos "last_activity_at" ou tempo na coluna
+    // Mas para simplificação inicial, "created_at" serve para "Resolução Total" e "Novo Contato"
+    // Para "Ongoing Response" (outras colunas), created_at pode ser agressivo, mas é o padrão atual.
+    const now = new Date();
+    const createdAt = new Date(card.created_at);
+    const elapsedMs = now.getTime() - createdAt.getTime();
     const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
     
     const remainingMinutes = Math.max(0, targetMinutes - elapsedMinutes);
@@ -146,7 +142,7 @@ serve(async (req) => {
       elapsedMinutes,
       remainingMinutes,
       targetMinutes,
-      basis: slaBasis
+      strategy
     };
 
     return new Response(
