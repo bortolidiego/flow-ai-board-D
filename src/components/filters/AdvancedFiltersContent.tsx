@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -27,9 +27,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Check, ChevronsUpDown, Trash2, Plus, User } from "lucide-react";
+import { Check, ChevronsUpDown, Trash2, Plus, User, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KanbanFilters } from '@/types/kanbanFilters';
+import { useUserRole } from '@/hooks/useUserRole';
+import { supabase } from '@/integrations/supabase/client';
 
 interface AdvancedFiltersContentProps {
   filters: KanbanFilters;
@@ -39,12 +41,12 @@ interface AdvancedFiltersContentProps {
   uniqueValues: {
     assignees: string[];
     funnelTypes: string[];
-    lifecycleStages: string[]; // Mantido para compatibilidade, mas não usado diretamente na UI
+    lifecycleStages: string[];
     products: string[];
     lostReasons: string[];
     customFields: string[];
   };
-  availableLifecycleStages: string[]; // Nova prop com etapas filtradas
+  availableLifecycleStages: string[];
 }
 
 export function AdvancedFiltersContent({
@@ -55,8 +57,44 @@ export function AdvancedFiltersContent({
   uniqueValues,
   availableLifecycleStages,
 }: AdvancedFiltersContentProps) {
-  
-  // Generic multi-select toggle helper
+  const { isAdmin } = useUserRole();
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+
+  // Buscar dados do usuário atual para filtrar
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserEmail(user.email);
+        setCurrentUserName(user.user_metadata?.full_name);
+      }
+    };
+    getUser();
+  }, []);
+
+  // Se não é admin, força o filtro de assignee para o usuário atual
+  useEffect(() => {
+    if (!isAdmin && (currentUserEmail || currentUserName)) {
+      // Tenta encontrar o nome do agente na lista de assignees que bate com email ou nome
+      // A lógica aqui é simples: se não é admin, injeta o filtro
+      // Nota: Isso é uma trava de UI. Para segurança real, RLS no banco é ideal.
+      
+      // Se o filtro de assignee estiver vazio, preencha com o usuário atual
+      // Para evitar loop, verifica se já contém
+      const myIdentifiers = [currentUserName, currentUserEmail].filter(Boolean) as string[];
+      
+      // Encontra qual identifier está sendo usado nos cards (geralmente é o nome vindo do chatwoot)
+      const myAgentName = uniqueValues.assignees.find(
+        a => myIdentifiers.some(id => a.toLowerCase().includes(id.toLowerCase()))
+      );
+
+      if (myAgentName && !filters.assignee.includes(myAgentName)) {
+        updateFilter('assignee', [myAgentName]);
+      }
+    }
+  }, [isAdmin, currentUserEmail, currentUserName, uniqueValues.assignees]);
+
   const toggleArrayFilter = (key: keyof KanbanFilters, value: string) => {
     const current = (filters[key] as string[]) || [];
     const next = current.includes(value)
@@ -69,15 +107,17 @@ export function AdvancedFiltersContent({
     <div className="space-y-4">
       <div className="flex items-center justify-between px-1">
         <h4 className="font-medium text-sm text-muted-foreground">Filtros Ativos</h4>
-        <Button variant="ghost" size="sm" onClick={resetFilters} className="h-6 text-xs text-destructive hover:text-destructive">
-          Limpar tudo
-        </Button>
+        {isAdmin && (
+          <Button variant="ghost" size="sm" onClick={resetFilters} className="h-6 text-xs text-destructive hover:text-destructive">
+            Limpar tudo
+          </Button>
+        )}
       </div>
 
       <ScrollArea className="h-[60vh] pr-4">
         <Accordion type="multiple" defaultValue={['people', 'funnel']} className="w-full">
           
-          {/* 1. PESSOAS (Agentes) */}
+          {/* 1. PESSOAS (Agentes) - Só mostra se for Admin */}
           <AccordionItem value="people">
             <AccordionTrigger className="text-sm">👤 Pessoas & Atendimento</AccordionTrigger>
             <AccordionContent className="space-y-4 pt-2">
@@ -88,33 +128,44 @@ export function AdvancedFiltersContent({
                     {filters.assignee.length} selecionados
                   </Badge>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {uniqueValues.assignees.map(agent => (
-                    <Badge
-                      key={agent}
-                      variant={filters.assignee.includes(agent) ? "default" : "outline"}
-                      className="cursor-pointer"
-                      onClick={() => toggleArrayFilter('assignee', agent)}
-                    >
-                      {agent}
-                    </Badge>
-                  ))}
-                </div>
                 
-                <div className="flex items-center space-x-2 pt-2">
-                  <Checkbox 
-                    id="unassigned" 
-                    checked={filters.isUnassigned || false}
-                    onCheckedChange={(c) => updateFilter('isUnassigned', c)}
-                  />
-                  <label htmlFor="unassigned" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Apenas sem responsável
-                  </label>
-                </div>
+                {isAdmin ? (
+                  <div className="flex flex-wrap gap-2">
+                    {uniqueValues.assignees.map(agent => (
+                      <Badge
+                        key={agent}
+                        variant={filters.assignee.includes(agent) ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => toggleArrayFilter('assignee', agent)}
+                      >
+                        {agent}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-2 bg-muted/50 rounded border border-muted text-xs text-muted-foreground flex items-center gap-2">
+                    <Lock className="w-3 h-3" />
+                    Você só pode ver seus próprios chamados.
+                  </div>
+                )}
+                
+                {isAdmin && (
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Checkbox 
+                      id="unassigned" 
+                      checked={filters.isUnassigned || false}
+                      onCheckedChange={(c) => updateFilter('isUnassigned', c)}
+                    />
+                    <label htmlFor="unassigned" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Apenas sem responsável
+                    </label>
+                  </div>
+                )}
               </div>
             </AccordionContent>
           </AccordionItem>
 
+          {/* REST OF THE COMPONENTS (Same as before) */}
           {/* 2. FUNIL & ETAPAS */}
           <AccordionItem value="funnel">
             <AccordionTrigger className="text-sm">🎯 Funil & Etapas</AccordionTrigger>
@@ -139,7 +190,6 @@ export function AdvancedFiltersContent({
                 </div>
               </div>
 
-              {/* Mostra etapas filtradas ou todas se nenhum funil selecionado */}
               {availableLifecycleStages.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-xs">
@@ -157,11 +207,9 @@ export function AdvancedFiltersContent({
             </AccordionContent>
           </AccordionItem>
 
-          {/* 3. MÉTRICAS & SCORES */}
           <AccordionItem value="metrics">
             <AccordionTrigger className="text-sm">📊 Métricas & Qualidade</AccordionTrigger>
             <AccordionContent className="space-y-6 pt-4 px-1">
-              {/* Chance de Negócio */}
               <div className="space-y-3">
                 <div className="flex justify-between text-xs">
                   <Label>Chance de Negócio</Label>
@@ -180,7 +228,6 @@ export function AdvancedFiltersContent({
                 />
               </div>
 
-              {/* Qualidade de Atendimento */}
               <div className="space-y-3">
                 <div className="flex justify-between text-xs">
                   <Label>Qualidade Atendimento</Label>
@@ -200,12 +247,9 @@ export function AdvancedFiltersContent({
             </AccordionContent>
           </AccordionItem>
 
-          {/* 4. PRODUTOS & PERDAS */}
           <AccordionItem value="business">
             <AccordionTrigger className="text-sm">📦 Produtos & Perdas</AccordionTrigger>
             <AccordionContent className="space-y-4 pt-2">
-              
-              {/* Produtos (Searchable) */}
               <div className="space-y-2">
                 <Label className="text-xs">Produtos de Interesse</Label>
                 <MultiSelectCombobox 
@@ -218,7 +262,6 @@ export function AdvancedFiltersContent({
 
               <Separator />
 
-              {/* Motivos de Perda */}
               <div className="space-y-2">
                  <Label className="text-xs text-red-500">Motivos de Perda</Label>
                  <MultiSelectCombobox 
@@ -241,7 +284,6 @@ export function AdvancedFiltersContent({
             </AccordionContent>
           </AccordionItem>
           
-          {/* 5. CAMPOS PERSONALIZADOS */}
           {uniqueValues.customFields.length > 0 && (
              <AccordionItem value="custom">
               <AccordionTrigger className="text-sm">✨ Campos Personalizados</AccordionTrigger>
@@ -267,7 +309,6 @@ export function AdvancedFiltersContent({
   );
 }
 
-// Helper Component for Searchable Multi-Select
 function MultiSelectCombobox({ 
   options, 
   selected, 
