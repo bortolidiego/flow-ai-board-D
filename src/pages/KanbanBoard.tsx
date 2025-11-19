@@ -14,6 +14,7 @@ import { CardDetailDialog } from '@/components/CardDetailDialog';
 import { CardCompletionDialog } from '@/components/CardCompletionDialog';
 import { BulkActionsBar } from '@/components/BulkActionsBar';
 import { KanbanFilters } from '@/components/KanbanFilters';
+import { DeletedCardsSheet } from '@/components/DeletedCardsSheet';
 import { useKanbanData } from '@/hooks/useKanbanData';
 import { useKanbanFilters } from '@/hooks/useKanbanFilters';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -26,6 +27,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const KanbanBoard = () => {
   const { workspace, loading: workspaceLoading } = useWorkspace();
@@ -270,32 +272,62 @@ const KanbanBoard = () => {
       <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl shrink-0 z-20 relative">
         <div className={cn("w-full py-4", isMobile ? "px-3" : "px-6")}>
           <div className={cn("gap-3", isMobile ? "flex flex-col" : "flex items-center justify-between")}>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className={cn("font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent", isMobile ? "text-xl" : "text-2xl")}>
-                  Kanban Board
-                </h1>
-                {workspace && (
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <Building2 className="w-3 h-3" />
-                    {workspace.name}
-                  </Badge>
-                )}
+            <div className="flex items-center justify-between w-full md:w-auto">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h1 className={cn("font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent", isMobile ? "text-xl" : "text-2xl")}>
+                    Kanban Board
+                  </h1>
+                  {workspace && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Building2 className="w-3 h-3" />
+                      {workspace.name}
+                    </Badge>
+                  )}
+                </div>
+                <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-xs")}>Gestão visual de leads e oportunidades</p>
               </div>
-              <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-xs")}>Gestão visual de leads e oportunidades</p>
+              
+              {/* Lixeira no Mobile (canto direito) */}
+              {isMobile && pipeline && (
+                <DeletedCardsSheet 
+                  pipelineId={pipeline.id}
+                  onRestore={refreshCards}
+                />
+              )}
             </div>
+
             <div className={cn("flex items-center", isMobile ? "flex-col gap-2 w-full" : "gap-2")}>
               {!selectionMode ? (
                 <>
-                  <Button
-                    onClick={toggleSelectionMode}
-                    variant="outline"
-                    size={isMobile ? "default" : "sm"}
-                    className={cn("gap-2", isMobile && "w-full")}
-                  >
-                    <CheckSquare className={cn(isMobile ? "w-5 h-5" : "w-4 h-4")} />
-                    {isMobile ? "Seleção" : "Modo Seleção"}
-                  </Button>
+                  <div className="flex items-center gap-2 w-full md:w-auto">
+                    <Button
+                      onClick={toggleSelectionMode}
+                      variant="outline"
+                      size={isMobile ? "default" : "sm"}
+                      className={cn("gap-2 flex-1 md:flex-none")}
+                    >
+                      <CheckSquare className={cn(isMobile ? "w-5 h-5" : "w-4 h-4")} />
+                      {isMobile ? "Seleção" : "Modo Seleção"}
+                    </Button>
+                    
+                    {!isMobile && pipeline && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div>
+                            <DeletedCardsSheet 
+                              pipelineId={pipeline.id}
+                              onRestore={refreshCards}
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Lixeira: Ver itens excluídos</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+
                   <Button
                     onClick={handleReanalyzeAll}
                     disabled={reanalyzing || !pipeline || cards.length === 0}
