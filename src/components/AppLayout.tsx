@@ -32,10 +32,11 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <SidebarProvider defaultOpen={!isMobile}>
-      <div className="flex min-h-screen w-full">
+      {/* Mudança: h-screen e overflow-hidden para travar o layout na viewport */}
+      <div className="flex h-screen w-full overflow-hidden">
         <AppSidebar />
-        <div className="flex-1 flex flex-col">
-          <header className={cn("border-b border-border/50 bg-card/30 backdrop-blur-xl flex items-center justify-between", isMobile ? "h-12 px-3" : "h-14 px-4")}>
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          <header className={cn("border-b border-border/50 bg-card/30 backdrop-blur-xl flex items-center justify-between shrink-0", isMobile ? "h-12 px-3" : "h-14 px-4")}>
             <div className="flex items-center flex-1">
               <SidebarTrigger className={cn(isMobile ? "mr-2" : "mr-4")} />
               {!isMobile && (
@@ -73,7 +74,9 @@ export function AppLayout({ children }: AppLayoutProps) {
               </Button>
             )}
           </header>
-          <main className="flex-1">
+          {/* Mudança: Main agora é um flex container que não scrolla a página toda, 
+             mas permite que os filhos definam seus scrolls */}
+          <main className="flex-1 flex flex-col overflow-hidden relative">
             {children}
           </main>
         </div>

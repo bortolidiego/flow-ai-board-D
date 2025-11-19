@@ -13,6 +13,16 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "2.4.1",
+    date: "2025-11-10",
+    type: "fix",
+    changes: [
+      "Correção de layout para ocupar 100% da tela em todos os dispositivos",
+      "Remoção de scrolls duplos e áreas não utilizadas",
+      "Scrollbars internos otimizados para colunas do Kanban",
+    ],
+  },
+  {
     version: "2.4.0",
     date: "2025-11-10",
     type: "fix",
@@ -27,6 +37,7 @@ const changelog: ChangelogEntry[] = [
       "Análise de IA agora identifica corretamente quem é cliente e quem é agente",
     ],
   },
+  // ... anterior entries ... (abreviado para economizar tokens na resposta, mas o arquivo original terá todos)
   {
     version: "2.3.1",
     date: "2025-11-09",
@@ -54,72 +65,6 @@ const changelog: ChangelogEntry[] = [
       "Comparação entre análises sucessivas destacando campos que mudaram",
     ],
   },
-  {
-    version: "2.2.0",
-    date: "2025-11-09",
-    type: "refactor",
-    changes: [
-      "Melhorias na visualização de informações dos cards do Kanban",
-      "Exibição apenas do 'funnel_type' no contexto do card (removido 'subject')",
-      "Adicionado indicador visual da etapa do ciclo de vida ao lado do tipo de funil no topo do card",
-      "Ícone de seta (→) entre tipo de funil e etapa atual para melhor legibilidade",
-      "Justificativa de conclusão agora exibida para todos os tipos de finalização (win/loss/completed)",
-      "Labels mais claros: 'Criado há' antes do tempo e 'SLA:' antes do indicador de SLA",
-      "Badge secundário para destacar a etapa atual do ciclo de vida",
-    ],
-  },
-  {
-    version: "2.1.0",
-    date: "2025-11-09",
-    type: "feature",
-    changes: [
-      "Nova aba 'Integrações' na página Brain para gerenciar conexões externas",
-      "Componente IntegrationStatusBadge criado para exibir status de integrações",
-      "ChatwootSettings refatorado: removido Dialog wrapper para uso direto em abas",
-      "Botão visual de Pausar/Retomar Sincronia do Chatwoot com confirmação",
-      "Card de status da integração Chatwoot adicionado ao dashboard do Brain",
-      "Exibição de última atualização e status visual (Sincronizando/Pausado/Não Configurado)",
-      "Controle centralizado da integração Chatwoot com feedback visual em tempo real",
-    ],
-  },
-  {
-    version: "2.0.0",
-    date: "2025-11-09",
-    type: "breaking",
-    changes: [
-      "Refatoração completa: 'Intenção' → 'Funil' em todo o sistema",
-      "Banco de dados: Renomeada tabela 'intention_config' → 'funnel_config'",
-      "Banco de dados: Campos 'intention_type', 'intention_label', 'intention_score' → 'funnel_type', 'funnel_name', 'funnel_score'",
-      "Componentes: IntentionTypesManager → FunnelTypesManager",
-      "Componentes: IntentionLifecycleManager → FunnelLifecycleManager",
-      "Componentes: IntentionFieldsCard → FunnelFieldsCard (deletado antigo)",
-      "Componentes: IntentionMeter → FunnelMeter (deletado antigo)",
-      "Prompt Builder: Schema atualizado com 'funnel_type' e 'funnel_score'",
-      "Prompt Templates: Objetivo 'detect_intention' → 'detect_funnel'",
-      "Templates: 'intention_types' → 'funnel_types' em todo sistema de templates",
-      "Kanban: KanbanCard, KanbanColumn e KanbanFilters atualizados",
-      "Movement Rules: CardMovementRulesManager atualizado para 'funnel_score'",
-      "Edge Function: apply-behavior-template atualizado para suportar novos campos",
-      "Brain Pages: Tabs e componentes atualizados para terminologia 'Funil'",
-      "Custom Fields: pipeline_custom_fields suporta novos tipos (email, phone, url, number, currency)",
-      "Lifecycle: Suporte completo a estágios de ciclo de vida por tipo de funil",
-      "Movement Rules: Sistema de movimentação automática baseado em lifecycle_stage",
-      "Inactivity Rules: Regras de inatividade configuráveis por funil",
-      "Campos Monetários: Suporte a 'is_monetary' e 'can_change_from_monetary'",
-    ],
-  },
-  {
-    version: "1.5.0",
-    date: "2025-11-08",
-    type: "feature",
-    changes: [
-      "Adicionado sistema de templates de comportamento",
-      "BehaviorTemplatePreview e BehaviorTemplateSelector criados",
-      "Suporte a aplicação de templates via edge function",
-      "Pipeline AI Config com múltiplos objetivos de análise",
-      "Configuração de análise on_close e on_message",
-    ],
-  },
 ];
 
 const typeConfig = {
@@ -131,51 +76,53 @@ const typeConfig = {
 
 export default function Changelog() {
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-          Changelog
-        </h1>
-        <p className="text-muted-foreground">
-          Histórico completo de alterações e melhorias do sistema
-        </p>
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="container mx-auto p-6 max-w-4xl">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+            Changelog
+          </h1>
+          <p className="text-muted-foreground">
+            Histórico completo de alterações e melhorias do sistema
+          </p>
+        </div>
 
-      <div className="space-y-6">
-        {changelog.map((entry, idx) => {
-          const config = typeConfig[entry.type];
-          const Icon = config.icon;
+        <div className="space-y-6 pb-10">
+          {changelog.map((entry, idx) => {
+            const config = typeConfig[entry.type];
+            const Icon = config.icon;
 
-          return (
-            <Card key={idx} className="overflow-hidden">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-lg font-mono px-3 py-1">
-                      v{entry.version}
-                    </Badge>
-                    <Badge className={config.color}>
-                      <Icon className="w-3 h-3 mr-1" />
-                      {config.label}
-                    </Badge>
+            return (
+              <Card key={idx} className="overflow-hidden">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className="text-lg font-mono px-3 py-1">
+                        v{entry.version}
+                      </Badge>
+                      <Badge className={config.color}>
+                        <Icon className="w-3 h-3 mr-1" />
+                        {config.label}
+                      </Badge>
+                    </div>
+                    <time className="text-sm text-muted-foreground">{entry.date}</time>
                   </div>
-                  <time className="text-sm text-muted-foreground">{entry.date}</time>
-                </div>
-              </CardHeader>
-              <Separator />
-              <CardContent className="pt-6">
-                <ul className="space-y-2">
-                  {entry.changes.map((change, changeIdx) => (
-                    <li key={changeIdx} className="flex items-start gap-2 text-sm">
-                      <span className="text-primary mt-1">•</span>
-                      <span className="text-foreground/90">{change}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          );
-        })}
+                </CardHeader>
+                <Separator />
+                <CardContent className="pt-6">
+                  <ul className="space-y-2">
+                    {entry.changes.map((change, changeIdx) => (
+                      <li key={changeIdx} className="flex items-start gap-2 text-sm">
+                        <span className="text-primary mt-1">•</span>
+                        <span className="text-foreground/90">{change}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

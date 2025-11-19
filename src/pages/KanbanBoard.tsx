@@ -229,16 +229,16 @@ const KanbanBoard = () => {
 
   if (workspaceLoading || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl">
-        <div className={cn("container mx-auto py-4", isMobile ? "px-3" : "px-6")}>
+    <div className="h-full flex flex-col bg-gradient-to-br from-background via-background to-primary/5 overflow-hidden">
+      <div className="border-b border-border/50 bg-card/30 backdrop-blur-xl shrink-0">
+        <div className={cn("w-full py-4", isMobile ? "px-3" : "px-6")}>
           <div className={cn("gap-3", isMobile ? "flex flex-col" : "flex items-center justify-between")}>
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -336,7 +336,7 @@ const KanbanBoard = () => {
         </div>
       </div>
 
-      <main className={cn("container mx-auto py-8", isMobile ? "px-3" : "px-6")}>
+      <main className={cn("flex-1 flex flex-col w-full overflow-hidden", isMobile ? "p-3" : "p-6")}>
         <KanbanFilters
           filters={filters}
           sortBy={sortBy}
@@ -354,9 +354,8 @@ const KanbanBoard = () => {
           deleteView={deleteView}
         />
 
-        {/* Rest of the component remains the same */}
         {selectionMode && selectedCardIds.size > 0 && (
-          <div className="mb-4">
+          <div className="mb-4 shrink-0">
             <BulkActionsBar
               selectedCount={selectedCardIds.size}
               onCancel={() => {
@@ -372,15 +371,13 @@ const KanbanBoard = () => {
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className={cn(
-            "pb-4",
+            "flex-1", // Occupy all remaining space
             isMobile
-              ? "flex flex-col gap-4 space-y-4"
-              : "flex gap-4 overflow-x-auto pb-4 min-h-[600px]"
+              ? "flex flex-col gap-4 overflow-y-auto pb-20"
+              : "flex gap-4 overflow-x-auto overflow-y-hidden pb-2"
           )}>
             {pipeline?.columns.map((column) => {
               const columnCards = getColumnCards(column.id);
-              
-              // Somar valor dos cards visíveis na coluna
               const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
 
               return (

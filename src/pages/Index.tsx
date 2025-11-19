@@ -15,6 +15,8 @@ import { useKanbanData } from '@/hooks/useKanbanData';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { Bot, Sparkles, Loader2, Building2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { cn } from '@/lib/utils';
 
 const Index = () => {
   const { workspace, loading: workspaceLoading } = useWorkspace();
@@ -27,6 +29,7 @@ const Index = () => {
 
   const [activeCard, setActiveCard] = useState<any>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -64,16 +67,16 @@ const Index = () => {
 
   if (workspaceLoading || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <header className="border-b border-border/50 bg-card/30 backdrop-blur-xl">
-        <div className="container mx-auto px-6 py-4">
+    <div className="h-full flex flex-col bg-gradient-to-br from-background via-background to-primary/5 overflow-hidden">
+      <header className="border-b border-border/50 bg-card/30 backdrop-blur-xl shrink-0">
+        <div className={cn("w-full py-4", isMobile ? "px-3" : "px-6")}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -97,13 +100,20 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      {/* Main area takes remaining height */}
+      <main className={cn("flex-1 flex flex-col w-full overflow-hidden", isMobile ? "p-3" : "p-6")}>
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          {/* Board Container: horizontal scroll for desktop, vertical for mobile */}
+          <div className={cn(
+            "flex-1", // Occupy all remaining space
+            isMobile
+              ? "flex flex-col gap-4 overflow-y-auto pb-20"
+              : "flex gap-4 overflow-x-auto overflow-y-hidden pb-2"
+          )}>
             {pipeline?.columns.map((column) => {
               const columnCards = getColumnCards(column.id);
               return (

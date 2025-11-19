@@ -160,7 +160,7 @@ const Brain = () => {
 
   if (workspaceLoading || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -168,7 +168,7 @@ const Brain = () => {
 
   if (!pipeline) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+      <div className="h-full bg-gradient-to-br from-background via-background to-primary/5 overflow-y-auto">
         <div className="container mx-auto px-6 py-8">
           <Card className="border-2 border-dashed border-primary/30">
             <CardContent className="flex flex-col items-center justify-center py-16 px-6">
@@ -192,7 +192,8 @@ const Brain = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+    // Adicionado h-full e overflow-y-auto para permitir scroll independente nesta página
+    <div className="h-full bg-gradient-to-br from-background via-background to-primary/5 overflow-y-auto">
       <div className="container mx-auto px-6 py-8">
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
