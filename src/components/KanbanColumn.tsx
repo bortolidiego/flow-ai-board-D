@@ -44,6 +44,7 @@ interface KanbanColumnProps {
   title: string;
   cards: Card[];
   count: number;
+  totalValue?: number; // New prop for sum
   onCardClick?: (cardId: string) => void;
   pipelineConfig?: PipelineConfig | null;
   selectionMode?: boolean;
@@ -57,6 +58,7 @@ export const KanbanColumn = ({
   title, 
   cards, 
   count, 
+  totalValue = 0,
   onCardClick, 
   pipelineConfig,
   selectionMode = false,
@@ -74,6 +76,14 @@ export const KanbanColumn = ({
 
   const handleSelectAll = () => {
     onSelectAllColumn?.(id);
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      maximumFractionDigits: 0 // Simplificar visualização no header
+    }).format(value);
   };
 
   return (
@@ -99,7 +109,7 @@ export const KanbanColumn = ({
             }
           }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 overflow-hidden">
             {selectionMode && (
               <Checkbox
                 checked={allColumnCardsSelected}
@@ -109,17 +119,30 @@ export const KanbanColumn = ({
                 onClick={(e) => e.stopPropagation()}
               />
             )}
-            <h2 className={cn("font-semibold text-foreground", isMobile && "text-base")}>{title}</h2>
-            <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground", isMobile ? "text-sm" : "text-xs")}>
+            <h2 className={cn("font-semibold text-foreground truncate", isMobile && "text-base")}>{title}</h2>
+            
+            {/* Contagem */}
+            <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground flex-shrink-0", isMobile ? "text-sm" : "text-xs")}>
               {count}
             </span>
+
+            {/* Somatório Monetário */}
+            {totalValue > 0 && (
+              <span className={cn(
+                "px-2 py-0.5 font-medium rounded-full bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 flex-shrink-0", 
+                isMobile ? "text-sm" : "text-xs"
+              )}>
+                {formatCurrency(totalValue)}
+              </span>
+            )}
+
             {selectionMode && selectedInColumnCount > 0 && (
-              <span className={cn("px-2 py-0.5 font-medium rounded-full bg-primary text-primary-foreground", isMobile ? "text-sm" : "text-xs")}>
+              <span className={cn("px-2 py-0.5 font-medium rounded-full bg-primary text-primary-foreground flex-shrink-0", isMobile ? "text-sm" : "text-xs")}>
                 {selectedInColumnCount}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-shrink-0">
             {!selectionMode && !isMobile && (
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
                 <Plus className="h-4 w-4" />

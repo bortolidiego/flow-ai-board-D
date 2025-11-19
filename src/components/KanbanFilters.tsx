@@ -119,7 +119,7 @@ export const KanbanFilters = ({
               <Filter className="h-4 w-4 mr-2" />
               Filtros
               {activeFiltersCount > 0 && (
-                <Badge variant="primary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]">
+                <Badge variant="default" className="ml-2 h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]">
                   {activeFiltersCount}
                 </Badge>
               )}

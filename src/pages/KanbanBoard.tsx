@@ -44,7 +44,7 @@ const KanbanBoard = () => {
     sortBy,
     setSortBy,
     updateFilter,
-    updateCustomFieldFilter, // New function
+    updateCustomFieldFilter,
     resetFilters,
     filteredCards,
     activeFiltersCount,
@@ -64,8 +64,6 @@ const KanbanBoard = () => {
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const isMobile = useIsMobile();
-
-  // ... (rest of the functions remain the same: handleReanalyzeAll, toggleSelectionMode, etc)
 
   const handleReanalyzeAll = async () => {
     if (!pipeline) {
@@ -381,6 +379,10 @@ const KanbanBoard = () => {
           )}>
             {pipeline?.columns.map((column) => {
               const columnCards = getColumnCards(column.id);
+              
+              // Somar valor dos cards visíveis na coluna
+              const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
+
               return (
                 <KanbanColumn
                   key={column.id}
@@ -388,6 +390,7 @@ const KanbanBoard = () => {
                   title={column.name}
                   cards={columnCards}
                   count={columnCards.length}
+                  totalValue={columnTotalValue}
                   onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
                   pipelineConfig={pipelineConfig}
                   selectionMode={selectionMode}
