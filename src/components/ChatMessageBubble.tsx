@@ -26,7 +26,7 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   if (isSystem) {
     return (
       <div className="w-full flex justify-center my-2">
-        <span className="text-[11px] bg-white/90 dark:bg-slate-800/90 text-gray-600 dark:text-gray-300 px-2 py-1 rounded shadow-sm uppercase tracking-wide">
+        <span className="text-[11px] bg-white/90 dark:bg-slate-800/90 text-gray-600 dark:text-gray-300 px-2 py-1 rounded shadow-sm uppercase tracking-wide border border-gray-200 dark:border-gray-700">
           {message}
         </span>
       </div>
@@ -43,25 +43,26 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
     >
       <div
         className={cn(
-          "relative max-w-[85%] px-3 py-1.5 text-sm shadow-sm border border-black/5",
+          "relative max-w-[85%] px-2 py-1.5 text-sm shadow-sm",
           // Bordas arredondadas com lógica de continuação
           "rounded-lg",
           !isContinuation && isAgent && "rounded-tr-none",
           !isContinuation && isClient && "rounded-tl-none",
           
-          // Cores
+          // Cores WhatsApp style
           isAgent 
-            ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-black dark:text-white" 
-            : "bg-white dark:bg-[#202c33] text-black dark:text-white"
+            ? "bg-[#dcf8c6] dark:bg-[#056162] text-black dark:text-white" 
+            : "bg-white dark:bg-[#262d31] text-black dark:text-white"
         )}
       >
-        {/* Cabeçalho da mensagem (apenas se não for continuação) */}
-        {!isContinuation && name && (
+        {/* Cabeçalho da mensagem (Nome) */}
+        {/* Mostra o nome se não for continuação OU se tiver um nome explícito passado (mesmo em continuação, às vezes queremos mostrar) */}
+        {(!isContinuation || name) && name && (
           <div className="flex items-baseline gap-2 mb-0.5">
             <span
               className={cn(
-                "text-xs font-bold",
-                isAgent ? "text-green-700 dark:text-green-300" : "text-blue-600 dark:text-blue-300"
+                "text-[12.5px] font-medium leading-tight",
+                isAgent ? "text-[#075e54] dark:text-[#00af9c]" : "text-[#128c7e] dark:text-[#34b7f1]"
               )}
             >
               {name}
@@ -69,17 +70,16 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
           </div>
         )}
 
-        <div className="flex flex-wrap items-end gap-x-2">
-          <span className="leading-relaxed whitespace-pre-wrap break-words">
+        <div className="flex flex-wrap items-end gap-x-2 relative pr-2">
+          <span className="leading-relaxed whitespace-pre-wrap break-words text-[14px]">
             {message}
           </span>
           
           {/* Hora flutuando à direita inferior */}
-          {time && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto select-none min-w-fit">
-              {time}
-            </span>
-          )}
+          {/* Garante espaço para a hora não sobrepor o texto */}
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto select-none min-w-[45px] text-right h-3 self-end mb-[-2px]">
+            {time || ""}
+          </span>
         </div>
       </div>
     </div>

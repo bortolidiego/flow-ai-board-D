@@ -19,32 +19,30 @@ interface ParsedMessage {
 }
 
 /**
- * Normaliza o nome removendo emojis e labels técnicos
+ * Limpa formatação de nomes (remove * e :)
  */
 function cleanName(raw: string): string {
   return raw
-    .replace(/🧑‍💼|👤/g, '')
-    .replace(/\b(Atendente|Agente|Cliente)\b/gi, '')
+    .replace(/[*:]/g, '') // Remove asteriscos e dois pontos
+    .replace(/🧑‍💼|👤/g, '') // Remove emojis
+    .replace(/\b(Atendente|Agente|Cliente)\b/gi, '') // Remove labels técnicos
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 /**
- * Verifica se a mensagem é "lixo" do sistema
+ * Tenta extrair data/hora de strings variadas
  */
-function isNoise(message: string, name?: string): boolean {
-  if (!message) return true;
-  const cleanMsg = message.trim();
+function extractTime(raw: string): string | undefined {
+  // Tenta formato [DD/MM/YYYY HH:mm] ou [HH:mm]
+  const bracketMatch = raw.match(/\[(.*?)\]/);
+  if (bracketMatch) return bracketMatch[1];
   
-  if (name && (
-    cleanMsg === `*${name}:*` || 
-    cleanMsg === `*${name}*` || 
-    cleanMsg === `${name}:`
-  )) {
-    return true;
-  }
+  // Tenta encontrar hora solta HH:mm no final ou início
+  const timeMatch = raw.match(/\b\d{1,2}:\d{2}\b/);
+  if (timeMatch) return timeMatch[0];
   
-  return false;
+  return undefined;
 }
 
 export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
@@ -62,46 +60,76 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
     const parsedMessages: ParsedMessage[] = [];
     
-    let lastRole: Role = 'system'; // Começa como sistema para segurança
+    let lastRole: Role = 'system';
     let lastName: string | undefined = undefined;
 
     lines.forEach((line) => {
       const raw = line.trim();
       
-      // Regex para capturar formato: [DATA HORA] EMOJI LABEL NOME: MENSAGEM
-      const strictRegex = /^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*(?:Atendente|Agente|Cliente)?\s*)?([^:]+):\s*(.+)$/i;
-      const match = raw.match(strictRegex);
+      // --- TENTATIVA 1: Formato Novo Padronizado ---
+      // Ex: [14/11 10:00] 🧑‍💼 Atendente Diego: Olá
+      const standardRegex = /^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*(?:Atendente|Agente|Cliente)?\s*)?([^:]+):\s*(.+)$/i;
+      const standardMatch = raw.match(standardRegex);
 
-      if (match) {
-        const time = match[1];
-        const marker = match[2] || '';
-        const rawName = match[3];
-        const messageContent = match[4];
-        const displayName = cleanName(rawName);
-
-        if (isNoise(messageContent, displayName)) return;
+      if (standardMatch) {
+        const time = standardMatch[1];
+        const marker = standardMatch[2] || '';
+        const rawName = standardMatch[3];
+        const content = standardMatch[4];
+        const name = cleanName(rawName);
 
         let role: Role = 'client';
-        if (marker === '🧑‍💼' || /\b(atendente|agente|kb tech|suporte)\b/i.test(rawName)) {
+        if (marker === '🧑‍💼' || /\b(atendente|agente|suporte)\b/i.test(rawName)) {
           role = 'agent';
-        } else if (marker === '👤' || /\bcliente\b/i.test(rawName)) {
+        } else if (marker === '👤') {
           role = 'client';
+        } else {
+          // Fallback por nome se não tiver emoji
+          role = name.toLowerCase().includes('bot') ? 'system' : 'client';
         }
 
         lastRole = role;
-        lastName = displayName;
+        lastName = name;
 
-        parsedMessages.push({
-          role,
-          time,
-          name: displayName,
-          message: messageContent,
-          isContinuation: false
-        });
+        parsedMessages.push({ role, time, name, message: content, isContinuation: false });
         return;
       }
 
-      // Verifica se é evento de sistema
+      // --- TENTATIVA 2: Formato Antigo / Chatwoot Clássico ---
+      // Ex: *Diego Bortoli:* Mensagem
+      // Ex: Diego Bortoli: Mensagem
+      const legacyRegex = /^(\*?[^*:]+\*?):\s*(.+)$/;
+      const legacyMatch = raw.match(legacyRegex);
+
+      if (legacyMatch) {
+        const rawName = legacyMatch[1];
+        const content = legacyMatch[2];
+        const name = cleanName(rawName);
+        
+        // Tenta achar hora dentro do conteúdo (alguns formatos colocam no fim)
+        let time = extractTime(raw);
+        
+        // Limpa a mensagem se a hora estiver nela
+        let cleanContent = content;
+        if (time) {
+             cleanContent = content.replace(`[${time}]`, '').trim();
+        }
+
+        // Inferir role
+        // Se não temos certeza, assumimos cliente, a menos que seja o mesmo nome do último agente conhecido
+        let role: Role = 'client'; 
+        if (lastRole === 'agent' && lastName === name) {
+            role = 'agent';
+        }
+
+        lastRole = role;
+        lastName = name;
+
+        parsedMessages.push({ role, time, name, message: cleanContent, isContinuation: false });
+        return;
+      }
+
+      // --- TENTATIVA 3: Mensagens de Sistema ---
       if (
         /conversa.*encerrad/i.test(raw) ||
         /transferid/i.test(raw) ||
@@ -109,36 +137,32 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
         /iniciada/i.test(raw) ||
         /etiqueta/i.test(raw)
       ) {
-        // Tenta extrair hora se existir
-        const timeMatch = raw.match(/^\[(.*?)\]/);
-        const time = timeMatch ? timeMatch[1] : undefined;
-        const message = raw.replace(/^\[.*?\]\s*/, '');
+        const time = extractTime(raw);
+        const message = raw.replace(/\[.*?\]/, '').trim();
         
-        parsedMessages.push({
-          role: 'system',
-          time,
-          message,
-          isContinuation: false
-        });
-        // Não atualiza lastRole para sistema, mantém o último contexto de fala
+        parsedMessages.push({ role: 'system', time, message, isContinuation: false });
         return;
       }
 
-      // Se não é cabeçalho nem sistema, assume continuação da última mensagem
+      // --- TENTATIVA 4: Continuação (linhas soltas) ---
+      // "oieee", "opa tudo bem"
+      // Assume que pertence à última pessoa que falou
       if (lastRole !== 'system') {
         parsedMessages.push({
           role: lastRole,
           name: lastName,
           message: raw,
-          isContinuation: true
+          isContinuation: true, // Isso agrupa visualmente
+          time: undefined // Geralmente continuações imediatas não têm hora nova repetida
         });
       } else {
-        // Se não tem contexto, trata como sistema (centralizado)
+        // Se começou com linha solta sem contexto, trata como sistema ou cliente default
         parsedMessages.push({
-          role: 'system',
+          role: 'client', // Default seguro
           message: raw,
           isContinuation: false
         });
+        lastRole = 'client';
       }
     });
 
@@ -180,9 +204,9 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
               className="p-4 h-[500px] overflow-y-auto bg-[#e5ddd5] dark:bg-[#0b141a]"
               style={{ 
                 backgroundImage: "url('/chat-bg.jpg')",
-                backgroundSize: 'cover', // Ajusta para cobrir o container
+                backgroundSize: 'cover',
                 backgroundPosition: 'center',
-                backgroundBlendMode: 'overlay' // Suaviza com a cor de fundo
+                backgroundBlendMode: 'overlay'
               }}
             >
               <div className="flex flex-col gap-1">
