@@ -21,6 +21,7 @@ const Index = () => {
   const {
     pipeline,
     cards,
+    pipelineConfig,
     loading,
     updateCardColumn,
   } = useKanbanData(workspace?.id);
@@ -106,6 +107,8 @@ const Index = () => {
           <div className="flex gap-4 overflow-x-auto pb-4">
             {pipeline?.columns.map((column) => {
               const columnCards = getColumnCards(column.id);
+              const totalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
+              
               return (
                 <KanbanColumn
                   key={column.id}
@@ -113,7 +116,9 @@ const Index = () => {
                   title={column.name}
                   cards={columnCards}
                   count={columnCards.length}
+                  totalValue={totalValue}
                   onCardClick={(cardId) => setSelectedCardId(cardId)}
+                  pipelineConfig={pipelineConfig}
                 />
               );
             })}
