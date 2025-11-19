@@ -3,11 +3,11 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
-// ... (manter definições de schema e utils anteriores, apenas focando no processamento)
-
+// Schema mais flexível para lidar com variações do payload
 const ChatwootWebhookSchema = z.object({
   id: z.number().optional(),
   event: z.enum(["conversation_created", "message_created", "message_updated", "conversation_updated"]),
+  account_id: z.number().optional(), // Chatwoot as vezes manda na raiz
   conversation: z.object({
     id: z.number(),
     inbox_id: z.number().optional(),
@@ -51,8 +51,6 @@ const ChatwootWebhookSchema = z.object({
   }).optional(),
 });
 
-// ... (funções auxiliares iguais)
-
 function sanitizeHTML(input: string): string {
   if (!input) return "";
   let sanitized = input.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
@@ -63,12 +61,9 @@ function sanitizeHTML(input: string): string {
   sanitized = sanitized.replace(tagPattern, (match, tag) => {
     return allowedTags.includes(tag.toLowerCase()) ? match : "";
   });
-  return sanitized.trim(); // Trim importante
+  return sanitized.trim();
 }
 
-// ... (Manter computeSignature e WebhookService como estavam)
-
-// --- UTILS (Recolocando as funções auxiliares necessárias para o contexto) ---
 function computeSignature(messageId, conversationId, senderName, messageType, content) {
   if (messageId) return `msg:${messageId}`;
   const norm = (s) => (s || "").toString().trim().toLowerCase().replace(/\s+/g, " ").slice(0, 300);
@@ -96,7 +91,6 @@ function isDuplicateContent(existingDescription, newContent) {
   return recentLines.includes(newContent.trim());
 }
 
-// --- SERVICE CLASS (Simplificado para o contexto da edição) ---
 class WebhookService {
   constructor(private supabase: SupabaseClient, private supabaseKey: string) {}
 
@@ -108,7 +102,22 @@ class WebhookService {
   }
 
   async checkIntegration(accountId: string) {
-    const { data } = await this.supabase.from("chatwoot_integrations").select("*").eq("account_id", accountId).maybeSingle();
+    // CORREÇÃO CRÍTICA: Adicionado join para buscar pipelines e columns
+    const { data } = await this.supabase
+      .from("chatwoot_integrations")
+      .select(`
+        *,
+        pipelines (
+          id,
+          columns (
+            id,
+            name,
+            position
+          )
+        )
+      `)
+      .eq("account_id", accountId)
+      .maybeSingle();
     return data;
   }
 
@@ -139,14 +148,7 @@ class WebhookService {
     await this.supabase.rpc("increment_customer_stat", { profile_id: profileId, stat_field: "total_interactions" });
     await this.supabase.from("customer_profiles").update({ last_contact_at: new Date().toISOString() }).eq("id", profileId);
   }
-
-  async transcribeAudioIfNeeded(attachments: any[] | null | undefined, chatwootApiKey: string): Promise<string | null> {
-    // ... (Manter lógica de áudio existente)
-    return null; 
-  }
 }
-
-// --- MAIN HANDLER ---
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -169,24 +171,35 @@ serve(async (req) => {
     try {
       webhook = ChatwootWebhookSchema.parse(rawWebhook);
     } catch (e) {
-      return new Response(JSON.stringify({ error: "Invalid payload" }), { status: 400, headers: {...corsHeaders, "Content-Type": "application/json"} });
+      console.error("Zod Parse Error:", e);
+      return new Response(JSON.stringify({ error: "Invalid payload schema" }), { status: 400, headers: {...corsHeaders, "Content-Type": "application/json"} });
     }
 
-    const { event, conversation, message_type, sender, account, message } = webhook;
+    const { event, conversation, message_type, sender, account, message, account_id } = webhook;
     
     if (!["conversation_created", "message_created", "message_updated", "conversation_updated"].includes(event)) {
       return new Response(JSON.stringify({ message: "Event ignored" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
     }
 
-    // ... (verificações de account e integration mantidas)
-    const accountId = account?.id || conversation?.id;
-    if (!accountId) throw new Error("No account ID");
+    // Robust account ID extraction
+    const extractedAccountId = account?.id || account_id || conversation?.id; // Fallback seguro
+    if (!extractedAccountId) {
+       console.error("Payload missing account ID:", JSON.stringify(rawWebhook));
+       throw new Error("No account ID found in payload");
+    }
     
-    const integration: any = await service.checkIntegration(accountId.toString());
-    if (!integration || !integration.active) return new Response(JSON.stringify({ message: "Integration invalid" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
+    const integration: any = await service.checkIntegration(extractedAccountId.toString());
+    
+    if (!integration) {
+      console.warn(`Integration not found for account ${extractedAccountId}`);
+      return new Response(JSON.stringify({ message: "Integration not found" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
+    }
+
+    if (!integration.active) {
+      return new Response(JSON.stringify({ message: "Integration inactive" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
+    }
 
     let content = webhook.content || message?.content;
-    const attachments = message?.attachments || webhook.attachments || [];
     const messageId = webhook.id?.toString() || message?.id?.toString();
     const derivedMessageType = message?.message_type || message_type;
     const conversationIdStr = conversation?.id.toString();
@@ -195,7 +208,6 @@ serve(async (req) => {
     content = sanitizeHTML(content || "");
 
     // IGNORAR MENSAGENS VAZIAS OU "LIXO"
-    // Se o conteúdo for apenas "*Nome do Usuário*", ignore.
     const senderNameCheck = sender?.name || "";
     if (content && (content === `*${senderNameCheck}*` || content === `*${senderNameCheck}:*`)) {
        return new Response(JSON.stringify({ message: "Empty/System message ignored" }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
@@ -221,10 +233,8 @@ serve(async (req) => {
       const existingCard = await service.findExistingCard(conversationIdStr);
 
       if (existingCard) {
-        // ... (Lógica de atualização existente)
         
         if (event === "conversation_updated") {
-           // Atualiza apenas metadados, sem adicionar mensagem
            const updateData: any = { updated_at: new Date().toISOString() };
            if (conversation?.assignee?.name) updateData.chatwoot_agent_name = conversation.assignee.name;
            await service.updateCardMetadata(existingCard.id, updateData);
@@ -254,14 +264,25 @@ serve(async (req) => {
       }
     }
 
-    // ... (Lógica de criação de card existente)
+    // LÓGICA DE CRIAÇÃO
     if (!conversationIdStr) throw new Error("No conversation ID");
 
-    // Se não existir card, cria um novo
+    // Pegar colunas da relação carregada no checkIntegration
     const pipeline = integration.pipelines;
-    const firstColumn = pipeline?.columns?.[0]; // Simplificação para o exemplo
     
-    if (!firstColumn) throw new Error("No columns");
+    if (!pipeline) {
+      console.error("Integration exists but has no pipeline linked", integration);
+      throw new Error("Pipeline not found for integration");
+    }
+
+    // Ordenar colunas por posição para pegar a primeira
+    const columns = pipeline.columns?.sort((a: any, b: any) => a.position - b.position);
+    const firstColumn = columns?.[0];
+    
+    if (!firstColumn) {
+      console.error("Pipeline has no columns", pipeline);
+      throw new Error("No columns found in pipeline");
+    }
 
     const cardData: any = {
        column_id: firstColumn.id,
@@ -269,16 +290,24 @@ serve(async (req) => {
        description: formattedMessage,
        priority: determinePriority(formattedMessage),
        chatwoot_conversation_id: conversationIdStr,
-       // ... outros campos
+       chatwoot_contact_name: !isAgent ? displayName : undefined, // Só salva se for cliente
+       chatwoot_agent_name: isAgent ? displayName : conversation?.assignee?.name,
+       inbox_name: conversation?.inbox?.name
     };
     
-    const { data: newCard } = await service.createCard(cardData);
+    const { data: newCard, error: createError } = await service.createCard(cardData);
+    
+    if (createError) {
+      console.error("Error creating card:", createError);
+      throw createError;
+    }
+    
     service.triggerAIAnalysis(newCard.id);
 
-    return new Response(JSON.stringify({ success: true }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
+    return new Response(JSON.stringify({ success: true, card_id: newCard.id }), { headers: {...corsHeaders, "Content-Type": "application/json"} });
 
   } catch (error: any) {
-    console.error("Error:", error);
+    console.error("Webhook Error:", error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: {...corsHeaders, "Content-Type": "application/json"} });
   }
 });
