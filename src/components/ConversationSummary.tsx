@@ -8,37 +8,11 @@ interface ConversationSummaryProps {
 }
 
 type Role = 'agent' | 'client' | 'system';
-type ParsedRole = Role | 'unknown';
-
-type ParsedLine = {
-  role: ParsedRole;
-  time?: string;
-  name?: string;
-  message?: string;
-  metaNameOnly?: boolean;
-};
 
 /**
- * Tenta identificar timestamp [DD/MM HH:mm] ou [HH:MM]
+ * Normaliza o nome removendo emojis e labels técnicos
  */
-function extractTime(line: string) {
-  // Tenta capturar [DD/MM HH:mm] ou [HH:MM]
-  const m = line.match(/\[(\d{2}\/\d{2}\s\d{2}:\d{2}|\d{2}:\d{2})\]/);
-  return m ? m[1] : undefined;
-}
-
-/**
- * Normaliza a linha removendo timestamp inicial
- */
-function stripTime(line: string) {
-  return line.replace(/^\s*\[.*?\]\s*/, '').trim();
-}
-
-/**
- * Limpa nome removendo emojis/labels e espaços extras
- */
-function normalizeName(raw?: string) {
-  if (!raw) return undefined;
+function cleanName(raw: string): string {
   return raw
     .replace(/🧑‍💼|👤/g, '')
     .replace(/\b(Atendente|Agente|Cliente)\b/gi, '')
@@ -47,164 +21,80 @@ function normalizeName(raw?: string) {
 }
 
 /**
- * Detecta se a linha é claramente de sistema (eventos)
+ * Parser principal das linhas do chat
  */
-function isSystemEvent(line: string) {
-  const lower = line.toLowerCase();
-  return (
-    /conversa.*encerrad/.test(lower) ||
-    /transferid/.test(lower) ||
-    /atribuíd|atribuid/.test(lower) ||
-    /fechad|closed/.test(lower) ||
-    /resolvid|finalizad/.test(lower)
-  );
-}
+function parseLine(raw: string): { role: Role; time?: string; name?: string; message?: string } {
+  const line = raw.trim();
+  if (!line) return { role: 'unknown' as any };
 
-/**
- * Detecta papel por keywords/emoji e extrai nome/mensagem
- */
-function parseLine(raw: string): ParsedLine {
-  const time = extractTime(raw);
-  const line = stripTime(raw);
-  const lower = line.toLowerCase();
+  // Regex para capturar formato: [DATA HORA] EMOJI LABEL NOME: MENSAGEM
+  // Ex: [10/11 14:30] 🧑‍💼 Atendente Diego: Olá
+  // Grupo 1: Data/Hora
+  // Grupo 2: Emoji e Label (Opcional)
+  // Grupo 3: Nome
+  // Grupo 4: Mensagem
+  const strictRegex = /^\[(.*?)\]\s*(?:(🧑‍💼|👤)\s*(?:Atendente|Agente|Cliente)?\s*)?([^:]+):\s*(.+)$/i;
+  const match = line.match(strictRegex);
 
-  // Eventos de sistema reais
-  if (isSystemEvent(line)) {
-    return { role: 'system', time, message: line };
+  if (match) {
+    const time = match[1];
+    const marker = match[2] || ''; // Emoji
+    const rawName = match[3];
+    const message = match[4];
+
+    let role: Role = 'client'; // Default fallback
+
+    // Determina role pelo emoji ou keywords no nome
+    if (marker === '🧑‍💼' || /\b(atendente|agente)\b/i.test(rawName)) {
+      role = 'agent';
+    } else if (marker === '👤' || /\bcliente\b/i.test(rawName)) {
+      role = 'client';
+    }
+
+    // Limpa o nome para exibição
+    const displayName = cleanName(rawName);
+
+    return { role, time, name: displayName, message };
   }
 
-  // Atualizado para incluir 'agente'
-  const isAgent =
-    line.includes('🧑‍💼') ||
-    /\b(atendente|agente)\b/.test(lower);
-  
-  const isClient =
-    line.includes('👤') ||
-    /\bcliente\b/.test(lower);
-
-  // Regex ampla permitindo emojis/labels antes do nome
-  // Agora suporta "Agente Nome:" ou apenas "Nome:" se os emojis foram removidos
-  const withMessage =
-    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Agente|Cliente)?\s*([^:]+):\s*(.+)$/i);
-  const nameOnly =
-    line.match(/^(?:[*_~\s]*)(?:🧑‍💼|👤|Atendente|Agente|Cliente)?\s*([^:]+):\s*$/i);
-
-  if (withMessage) {
-    const name = normalizeName((withMessage[1] || '').trim());
-    const message = (withMessage[2] || '').trim();
-    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
-    return { role, time, name, message };
+  // Fallback para linhas de sistema ou formatos antigos
+  if (
+    /conversa.*encerrad/i.test(line) ||
+    /transferid/i.test(line) ||
+    /atribuíd/i.test(line)
+  ) {
+    // Tenta extrair hora se houver
+    const timeMatch = line.match(/^\[(.*?)\]/);
+    const time = timeMatch ? timeMatch[1] : undefined;
+    const message = line.replace(/^\[.*?\]\s*/, '');
+    return { role: 'system', time, message };
   }
 
-  if (nameOnly) {
-    const name = normalizeName((nameOnly[1] || '').trim());
-    const role: ParsedRole = isAgent ? 'agent' : isClient ? 'client' : 'unknown';
-    // Metadado "Nome:" sem conteúdo — deve fundir com próxima linha
-    return { role, time, name, metaNameOnly: true };
-  }
-
-  // Sem padrão explícito — tratar como mensagem "solta"
-  return { role: 'unknown', time, message: line };
+  return { role: 'client', message: line }; // Fallback final
 }
 
 export const ConversationSummary = ({ summary, description }: ConversationSummaryProps) => {
   const renderDescription = (text: string) => {
     if (!text) return null;
+    
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
+    
+    return lines.map((line, idx) => {
+      const parsed = parseLine(line);
+      
+      // Se falhou em parsear algo útil, pula ou renderiza genérico
+      if (!parsed.message) return null;
 
-    const bubbles: Array<{
-      role: Role;
-      time?: string;
-      name?: string;
-      message: string;
-    }> = [];
-
-    let lastRole: Role = 'client';
-    let lastName: string | undefined;
-    let i = 0;
-
-    while (i < lines.length) {
-      const raw = lines[i];
-      const parsed = parseLine(raw);
-
-      // Fundir "Nome:" com próxima linha
-      if (parsed.metaNameOnly) {
-        // procurar próxima linha não vazia
-        let j = i + 1;
-        while (j < lines.length && lines[j].trim().length === 0) j++;
-        if (j < lines.length) {
-          const nextParsed = parseLine(lines[j]);
-          const effectiveRole: Role =
-            nextParsed.role === 'unknown'
-              ? (parsed.role !== 'unknown' ? (parsed.role as Role) : lastRole)
-              : (nextParsed.role as Role);
-
-          const effectiveName =
-            normalizeName(nextParsed.name) ||
-            parsed.name ||
-            lastName;
-
-          const message = (nextParsed.message || '').trim();
-          if (message.length > 0) {
-            bubbles.push({
-              role: effectiveRole,
-              time: nextParsed.time || parsed.time,
-              name: effectiveName,
-              message,
-            });
-            lastRole = effectiveRole;
-            if (effectiveName) lastName = effectiveName;
-          }
-          i = j + 1;
-          continue;
-        } else {
-          // Não há próxima linha — ignorar metadado solto
-          i++;
-          continue;
-        }
-      }
-
-      if (parsed.role === 'system') {
-        bubbles.push({
-          role: 'system',
-          time: parsed.time,
-          message: parsed.message || '',
-        });
-        i++;
-        continue;
-      }
-
-      // Mensagem comum — herdar papel/nome quando necessário
-      const effectiveRole: Role =
-        parsed.role === 'unknown' ? lastRole : (parsed.role as Role);
-
-      const effectiveName =
-        normalizeName(parsed.name) || lastName;
-
-      const message = (parsed.message || '').trim();
-      if (message.length > 0) {
-        bubbles.push({
-          role: effectiveRole,
-          time: parsed.time,
-          name: effectiveName,
-          message,
-        });
-        lastRole = effectiveRole;
-        if (effectiveName) lastName = effectiveName;
-      }
-
-      i++;
-    }
-
-    return bubbles.map((b, idx) => (
-      <ChatMessageBubble
-        key={idx}
-        role={b.role}
-        time={b.time}
-        name={b.name}
-        message={b.message}
-      />
-    ));
+      return (
+        <ChatMessageBubble
+          key={idx}
+          role={parsed.role}
+          time={parsed.time}
+          name={parsed.name}
+          message={parsed.message}
+        />
+      );
+    });
   };
 
   return (
@@ -227,12 +117,12 @@ export const ConversationSummary = ({ summary, description }: ConversationSummar
         )}
 
         {description && (
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+          <details className="mt-4" open>
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground mb-2">
               Ver conversa completa
             </summary>
-            <div className="mt-2 p-3 bg-muted/30 rounded-lg max-h-[400px] overflow-y-auto">
-              <div className="space-y-2">
+            <div className="p-3 bg-muted/10 rounded-lg max-h-[500px] overflow-y-auto border border-border/50">
+              <div className="flex flex-col gap-1">
                 {renderDescription(description)}
               </div>
             </div>

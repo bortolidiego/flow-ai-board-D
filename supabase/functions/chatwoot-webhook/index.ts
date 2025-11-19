@@ -267,16 +267,10 @@ serve(async (req) => {
     }
 
     const isPrivate = (message?.private ?? webhook.private) === true;
-    const effectiveSender = message?.sender ?? sender;
     
     if (["message_created", "message_updated"].includes(event)) {
       if (isPrivate) {
         return new Response(JSON.stringify({ message: "Private message ignored" }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (effectiveSender?.type === "captain_assistant") {
-        return new Response(JSON.stringify({ message: "Bot message ignored" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -306,12 +300,15 @@ serve(async (req) => {
       });
     }
 
+    // Configuração da mensagem
     let content = webhook.content || message?.content;
     const attachments = message?.attachments || webhook.attachments || [];
-
-    // Transcribe audio using the API key from the integration settings
-    const transcribedText = await service.transcribeAudioIfNeeded(attachments, integration.chatwoot_api_key);
+    const messageId = webhook.id?.toString() || message?.id?.toString();
+    const derivedMessageType = message?.message_type || message_type;
+    const conversationIdStr = conversation?.id.toString();
     
+    // Transcrição de áudio
+    const transcribedText = await service.transcribeAudioIfNeeded(attachments, integration.chatwoot_api_key);
     if (transcribedText) {
       content = transcribedText;
     } else if (!content && attachments.length > 0) {
@@ -320,9 +317,32 @@ serve(async (req) => {
     }
 
     content = sanitizeHTML(content || "");
-    const messageId = webhook.id?.toString() || message?.id?.toString();
-    const derivedMessageType = message?.message_type || message_type;
-    const conversationIdStr = conversation?.id.toString();
+
+    // DETERMINAÇÃO RIGOROSA DE PAPEL (AGENTE VS CLIENTE)
+    // incoming = mensagem do cliente para o chatwoot
+    // outgoing = mensagem do chatwoot (agente) para o cliente
+    const isAgent = derivedMessageType === "outgoing";
+    
+    // Determinar o nome correto para exibição
+    let displayName;
+    if (isAgent) {
+      // Se for agente, tenta pegar o nome do remetente (sender.name)
+      // Se não tiver, pega o nome do assignee da conversa
+      // Se não tiver, fallback para "Atendente"
+      displayName = sender?.name || conversation?.assignee?.name || "Atendente";
+    } else {
+      // Se for cliente, pega do sender ou meta.sender
+      displayName = sender?.name || conversation?.meta?.sender?.name || "Cliente";
+    }
+
+    // Construir a mensagem formatada
+    // Marcadores explícitos para o parser do frontend: 🧑‍💼 para Agente, 👤 para Cliente
+    const roleEmoji = isAgent ? "🧑‍💼" : "👤";
+    const roleLabel = isAgent ? "Atendente" : "Cliente";
+    const timestamp = getFormattedTimestamp();
+    
+    // Formato: [DATA HORA] EMOJI LABEL NOME: MENSAGEM
+    const formattedMessage = `[${timestamp}] ${roleEmoji} ${roleLabel} ${displayName}: ${content || "Mensagem"}`;
 
     if (conversationIdStr && ["message_created", "message_updated", "conversation_updated"].includes(event)) {
       const existingCard = await service.findExistingCard(conversationIdStr);
@@ -343,7 +363,7 @@ serve(async (req) => {
           });
         }
 
-        const signature = computeSignature(messageId, conversationIdStr, effectiveSender?.name, derivedMessageType, content);
+        const signature = computeSignature(messageId, conversationIdStr, displayName, derivedMessageType, content);
         if (signature) {
           const isDuplicate = await service.checkDuplicateEvent(signature);
           if (isDuplicate) {
@@ -358,11 +378,6 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-
-        const timestamp = getFormattedTimestamp();
-        const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
-        const displayName = isAgent ? "Agente" : (effectiveSender?.name || "Cliente");
-        const formattedMessage = `[${timestamp}] ${displayName}: ${content || "Mensagem"}`;
 
         let updatedDescription: string;
         if (event === "message_updated" && existingCard.description) {
@@ -441,21 +456,16 @@ serve(async (req) => {
       });
     }
 
-    const timestamp = getFormattedTimestamp();
-    const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
-    const displayName = isAgent ? "Agente" : (effectiveSender?.name || "Cliente");
-    const initialMessage = `[${timestamp}] ${displayName}: ${content || "Nova conversa iniciada"}`;
-
     const cardData: any = {
       column_id: firstColumn.id,
-      title: `${effectiveSender?.name || "Cliente"} - ${conversation?.inbox?.name || "Nova conversa"}`,
-      description: initialMessage,
-      priority: determinePriority(initialMessage),
+      title: `${displayName} - ${conversation?.inbox?.name || "Nova conversa"}`,
+      description: formattedMessage,
+      priority: determinePriority(formattedMessage),
       assignee: conversation?.assignee?.name,
       ai_suggested: true,
       chatwoot_conversation_id: conversationIdStr,
-      chatwoot_contact_name: effectiveSender?.name,
-      chatwoot_contact_email: effectiveSender?.email,
+      chatwoot_contact_name: isAgent ? undefined : displayName,
+      chatwoot_contact_email: sender?.email,
       inbox_name: conversation?.inbox?.name,
       position: 0,
       customer_profile_id: customerProfileId,

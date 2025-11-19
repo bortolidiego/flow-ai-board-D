@@ -10,16 +10,6 @@ interface ChatMessageBubbleProps {
   message: string;
 }
 
-function normalizeName(raw?: string) {
-  if (!raw) return undefined;
-  // Remove emojis/labels e espaços extras
-  return raw
-    .replace(/🧑‍💼|👤/g, "")
-    .replace(/\b(Atendente|Cliente)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   role,
   time,
@@ -30,8 +20,6 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
   const isClient = role === "client";
   const isSystem = role === "system";
 
-  const cleanName = normalizeName(name);
-
   return (
     <div
       className={cn(
@@ -41,30 +29,33 @@ export const ChatMessageBubble: React.FC<ChatMessageBubbleProps> = ({
     >
       <div
         className={cn(
-          "rounded-2xl px-3 py-2 shadow-sm border max-w-[80%] whitespace-pre-wrap break-words",
-          isAgent && "bg-primary/15 border-primary/30",
-          isClient && "bg-secondary/15 border-secondary/30",
-          isSystem && "bg-muted/40 border-muted"
+          "rounded-xl px-3 py-2 shadow-sm border max-w-[85%] text-sm",
+          isAgent && "bg-primary/10 border-primary/20 text-foreground rounded-tr-none",
+          isClient && "bg-secondary/10 border-secondary/20 text-foreground rounded-tl-none",
+          isSystem && "bg-muted/40 border-muted text-muted-foreground text-xs py-1"
         )}
       >
-        <div
-          className={cn(
-            "text-sm leading-relaxed break-words",
-            isSystem && "text-muted-foreground"
-          )}
-        >
+        <div className="inline leading-relaxed break-words">
+          {/* Data/Hora */}
           {time && (
-            <span className="mr-1 text-[11px] text-muted-foreground tabular-nums">
+            <span className="mr-1.5 text-[10px] font-mono opacity-60 tabular-nums select-none">
               [{time}]
             </span>
           )}
-          {!isSystem && cleanName && (
-            <span className="font-semibold text-foreground">
-              {cleanName}:
+          
+          {/* Nome */}
+          {!isSystem && name && (
+            <span className={cn(
+              "font-bold mr-1.5",
+              isAgent ? "text-primary" : "text-secondary-foreground"
+            )}>
+              {name}:
             </span>
           )}
-          <span className={cn(!isSystem && cleanName ? "ml-1" : "")}>
-            {message || "(sem texto)"}
+
+          {/* Mensagem */}
+          <span>
+            {message}
           </span>
         </div>
       </div>
