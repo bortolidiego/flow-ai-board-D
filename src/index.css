@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
 @layer base {
   :root {
     --background: 220 25% 10%;
@@ -37,6 +41,12 @@
     --gradient-primary: linear-gradient(135deg, hsl(270 80% 60%), hsl(190 80% 50%));
     --gradient-secondary: linear-gradient(135deg, hsl(320 75% 55%), hsl(270 80% 60%));
     --gradient-accent: linear-gradient(135deg, hsl(190 80% 50%), hsl(170 70% 50%));
+    
+    --glow-primary: 0 0 40px hsl(270 80% 60% / 0.4);
+    --glow-secondary: 0 0 40px hsl(190 80% 50% / 0.3);
+    
+    --glass-background: hsl(220 20% 14% / 0.7);
+    --glass-border: hsl(210 40% 98% / 0.1);
   }
 
   html, body, #root {
@@ -44,7 +54,7 @@
     width: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden; /* Remove scroll da página inteira */
+    overflow: hidden; /* Impede scroll na janela principal */
   }
 }
 
