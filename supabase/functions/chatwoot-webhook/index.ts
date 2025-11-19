@@ -51,8 +51,14 @@ const ChatwootWebhookSchema = z.object({
       email: z.string().email().max(255).optional().nullable(),
     }).optional().nullable(),
     attachments: z.array(z.object({
+      id: z.number().optional(),
+      message_id: z.number().optional(),
       file_type: z.string().optional(),
+      account_id: z.number().optional(),
+      extension: z.string().optional().nullable(),
       data_url: z.string().optional(),
+      thumb_url: z.string().optional(),
+      file_size: z.number().optional(),
     })).optional().nullable(),
   }).optional(),
 });
@@ -133,10 +139,19 @@ serve(async (req) => {
     const attachments = message?.attachments || [];
     
     // Lógica de Transcrição de Áudio
-    const audioAttachment = attachments?.find((att: any) => att.file_type === 'audio');
+    // Log para debug dos anexos
+    if (attachments && attachments.length > 0) {
+        console.log(`Message ${messageId} has attachments:`, JSON.stringify(attachments));
+    }
+
+    // Tenta encontrar anexo de áudio por tipo OU extensão
+    const audioAttachment = attachments?.find((att: any) => 
+        att.file_type === 'audio' || 
+        (att.data_url && /\.(ogg|oga|mp3|wav|m4a|webm)$/i.test(att.data_url))
+    );
     
     if (audioAttachment && audioAttachment.data_url) {
-      console.log("Audio attachment found, triggering transcription...");
+      console.log("Audio attachment found, triggering transcription for:", audioAttachment.data_url);
       try {
         const { data: transcriptionData, error: transcriptionError } = await supabase.functions.invoke('audio-transcribe', {
           body: { fileUrl: audioAttachment.data_url },
@@ -301,16 +316,16 @@ serve(async (req) => {
         
         // Formato: Agente ou Nome do Cliente
         const senderName = effectiveSender?.name || (isAgent ? "Agente" : "Cliente");
-        // Se for Agente, forçamos o label "Agente" conforme solicitado, se for cliente, usamos o nome.
         const displayName = isAgent ? "Agente" : senderName;
 
         // Verificação extra de duplicação lógica (para evitar spam de boas-vindas)
         if (existingCard.description && content) {
             const lines = existingCard.description.split('\n');
-            const lastLine = lines[lines.length - 1] || "";
-            // Se o conteúdo da última linha contiver exatamente a nova mensagem, ignoramos
-            if (lastLine.includes(content.trim())) {
-                console.log('Duplicate message content detected in description history, skipping update.');
+            // Verificar nas últimas 5 linhas para garantir que não é repetição
+            const recentLines = lines.slice(-5).join('\n');
+            // Se o conteúdo recente contiver a nova mensagem, ignoramos
+            if (recentLines.includes(content.trim())) {
+                console.log('Duplicate message content detected in recent history, skipping update.');
                 return new Response(JSON.stringify({ message: 'Duplicate message content ignored', cardId: existingCard.id }), {
                     headers: { ...corsHeaders, "Content-Type": "application/json" },
                     status: 200
