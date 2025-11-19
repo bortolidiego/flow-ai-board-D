@@ -375,40 +375,44 @@ const KanbanBoard = () => {
             )}
         </div>
 
-        {/* Kanban Board Area */}
+        {/* Kanban Board Area - SCROLL ÚNICO AQUI */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          {/* Este div é o container de scroll geral */}
           <div className={cn(
-            "flex-1 min-h-0", // min-h-0 is critical for nested flex scrolling
-            isMobile 
-              ? "overflow-y-auto px-3 pb-20 pt-4" // Mobile: Vertical scroll
-              : "overflow-x-auto overflow-y-hidden px-6 pt-4 pb-2" // Desktop: Horizontal scroll
+            "flex-1 overflow-auto", // Scroll em ambas direções se necessário
+            isMobile ? "px-3 pt-4 pb-20" : "px-6 pt-4 pb-6"
           )}>
+            {/* Este div força o conteúdo a ficar centralizado quando é menor que a tela, mas permite crescer */}
             <div className={cn(
-                "h-full",
-                // Adicionado mx-auto para centralizar quando houver poucas colunas
-                isMobile ? "flex flex-col gap-4" : "flex gap-4 min-w-max mx-auto" 
+                "flex",
+                isMobile ? "flex-col w-full" : "min-w-full w-max justify-center items-start" // w-max permite que cresça, justify-center centraliza se não crescer
             )}>
-              {pipeline?.columns.map((column) => {
-                const columnCards = getColumnCards(column.id);
-                const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
+              <div className={cn(
+                  "flex gap-4",
+                  isMobile ? "flex-col w-full" : "flex-row"
+              )}>
+                {pipeline?.columns.map((column) => {
+                  const columnCards = getColumnCards(column.id);
+                  const columnTotalValue = columnCards.reduce((sum, card) => sum + (card.value || 0), 0);
 
-                return (
-                  <KanbanColumn
-                    key={column.id}
-                    id={column.id}
-                    title={column.name}
-                    cards={columnCards}
-                    count={columnCards.length}
-                    totalValue={columnTotalValue}
-                    onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
-                    pipelineConfig={pipelineConfig}
-                    selectionMode={selectionMode}
-                    selectedCardIds={selectedCardIds}
-                    onSelectCard={toggleCardSelection}
-                    onSelectAllColumn={selectColumnCards}
-                  />
-                );
-              })}
+                  return (
+                    <KanbanColumn
+                      key={column.id}
+                      id={column.id}
+                      title={column.name}
+                      cards={columnCards}
+                      count={columnCards.length}
+                      totalValue={columnTotalValue}
+                      onCardClick={(cardId) => !selectionMode && setSelectedCardId(cardId)}
+                      pipelineConfig={pipelineConfig}
+                      selectionMode={selectionMode}
+                      selectedCardIds={selectedCardIds}
+                      onSelectCard={toggleCardSelection}
+                      onSelectAllColumn={selectColumnCards}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </div>
 

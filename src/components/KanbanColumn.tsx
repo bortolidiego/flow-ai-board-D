@@ -33,7 +33,6 @@ interface Card {
   winConfirmation?: string;
   lossReason?: string;
   customFieldsData?: Record<string, any>;
-  // Campos de ciclo de vida e completion
   completionType?: 'won' | 'lost' | 'completed' | null;
   completionReason?: string | null;
   completedAt?: string | null;
@@ -49,7 +48,7 @@ interface Card {
 interface PipelineConfig {
   customFields: any[];
   aiConfig?: any;
-  funnelTypes?: any[]; // Added missing type
+  funnelTypes?: any[];
 }
 
 interface KanbanColumnProps {
@@ -57,7 +56,7 @@ interface KanbanColumnProps {
   title: string;
   cards: Card[];
   count: number;
-  totalValue?: number; // New prop for sum
+  totalValue?: number;
   onCardClick?: (cardId: string) => void;
   pipelineConfig?: PipelineConfig | null;
   selectionMode?: boolean;
@@ -81,7 +80,7 @@ export const KanbanColumn = ({
 }: KanbanColumnProps) => {
   const { setNodeRef, isOver } = useDroppable({ id });
   const isMobile = useIsMobile();
-  const [isOpen, setIsOpen] = useState(!isMobile); // Começa expandido no desktop, retraído no mobile
+  const [isOpen, setIsOpen] = useState(!isMobile);
 
   const allColumnCardsSelected = cards.length > 0 && cards.every(card => selectedCardIds.has(card.id));
   const someColumnCardsSelected = cards.some(card => selectedCardIds.has(card.id)) && !allColumnCardsSelected;
@@ -95,7 +94,7 @@ export const KanbanColumn = ({
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-      maximumFractionDigits: 0 // Simplificar visualização no header
+      maximumFractionDigits: 0
     }).format(value);
   };
 
@@ -104,14 +103,14 @@ export const KanbanColumn = ({
       open={isMobile ? isOpen : true}
       onOpenChange={isMobile ? setIsOpen : undefined}
       className={cn(
-        "flex flex-col gap-3",
+        "flex flex-col gap-3 h-full", // h-full para ocupar a altura do container pai
         isMobile ? "w-full" : "w-[350px] min-w-[350px]"
       )}
     >
       <CollapsibleTrigger asChild>
         <div 
           className={cn(
-            "flex items-center justify-between cursor-pointer rounded-lg transition-all",
+            "flex items-center justify-between cursor-pointer rounded-lg transition-all sticky top-0 z-10", // Sticky se quiséssemos header fixo dentro do scroll geral, mas o pai já tem scroll
             isMobile ? "px-3 py-3 bg-card/50 border border-border/50 hover:bg-card/70 active:scale-[0.98]" : "px-2 cursor-default",
             isMobile && isOpen && "bg-primary/10 border-primary/30"
           )}
@@ -134,12 +133,10 @@ export const KanbanColumn = ({
             )}
             <h2 className={cn("font-semibold text-foreground truncate", isMobile && "text-base")}>{title}</h2>
             
-            {/* Contagem */}
             <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground flex-shrink-0", isMobile ? "text-sm" : "text-xs")}>
               {count}
             </span>
 
-            {/* Somatório Monetário */}
             {totalValue > 0 && (
               <span className={cn(
                 "px-2 py-0.5 font-medium rounded-full bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 flex-shrink-0", 
@@ -178,13 +175,13 @@ export const KanbanColumn = ({
         </div>
       </CollapsibleTrigger>
 
-      <CollapsibleContent className="flex-1 flex flex-col min-h-0">
+      <CollapsibleContent className="flex-1 flex flex-col">
         <div
           ref={setNodeRef}
           className={cn(
             "flex-1 rounded-lg space-y-2 transition-colors backdrop-blur-sm border border-border/30",
-            // Adicionado overflow-y-auto e scrollbar-thin para scroll interno na coluna
-            isMobile ? "p-3 min-h-[300px]" : "p-2 h-[calc(100vh-13rem)] overflow-y-auto scrollbar-thin scrollbar-thumb-primary/10 hover:scrollbar-thumb-primary/30",
+            // REMOVIDO: overflow-y-auto, h-calc, scrollbar. Agora a altura é automática.
+            isMobile ? "p-3 min-h-[100px]" : "p-2 min-h-[150px]", 
             isOver ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-card/30'
           )}
         >
