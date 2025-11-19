@@ -5,6 +5,7 @@ import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 // --- TYPES & SCHEMAS ---
 
+// Relaxed schema to ensure we capture attachments regardless of structure changes
 const ChatwootWebhookSchema = z.object({
   id: z.number().optional(),
   event: z.enum(["conversation_created", "message_created", "message_updated", "conversation_updated"]),
@@ -27,6 +28,8 @@ const ChatwootWebhookSchema = z.object({
   }).optional(),
   message_type: z.enum(["incoming", "outgoing"]).optional(),
   content: z.string().max(50000).nullable().optional(),
+  // Allow any structure for root attachments
+  attachments: z.array(z.any()).optional().nullable(), 
   sender: z.object({
     type: z.string().max(50).optional(),
     name: z.string().max(200).optional(),
@@ -46,16 +49,8 @@ const ChatwootWebhookSchema = z.object({
       name: z.string().max(200).optional(),
       email: z.string().email().max(255).optional().nullable(),
     }).optional().nullable(),
-    attachments: z.array(z.object({
-      id: z.number().optional(),
-      message_id: z.number().optional(),
-      file_type: z.string().optional(),
-      account_id: z.number().optional(),
-      extension: z.string().optional().nullable(),
-      data_url: z.string().optional(),
-      thumb_url: z.string().optional(),
-      file_size: z.number().optional(),
-    })).optional().nullable(),
+    // Allow any structure for message attachments
+    attachments: z.array(z.any()).optional().nullable(), 
   }).optional(),
 });
 
@@ -121,7 +116,6 @@ class WebhookService {
   async triggerAIAnalysis(cardId: string) {
     try {
       console.log("Triggering AI analysis for card:", cardId);
-      // Does not await execution, just triggers it
       this.supabase.functions.invoke("analyze-conversation", {
         body: { cardId },
         headers: { Authorization: `Bearer ${this.supabaseKey}` },
@@ -135,17 +129,28 @@ class WebhookService {
   }
 
   async transcribeAudioIfNeeded(attachments: any[] | null | undefined): Promise<string | null> {
-    if (!attachments || attachments.length === 0) return null;
+    // Debug logging for attachments
+    if (!attachments) {
+      console.log("No attachments found in payload.");
+      return null;
+    }
+    
+    if (attachments.length === 0) {
+      console.log("Attachments array is empty.");
+      return null;
+    }
 
-    console.log(`Checking attachments for audio:`, JSON.stringify(attachments));
+    console.log("Processing attachments:", JSON.stringify(attachments));
 
     const audioAttachment = attachments.find((att: any) => 
       att.file_type === 'audio' || 
-      (att.data_url && /\.(ogg|oga|mp3|wav|m4a|webm)$/i.test(att.data_url))
+      (att.data_url && /\.(ogg|oga|mp3|wav|m4a|webm|aac)/i.test(att.data_url))
     );
 
     if (audioAttachment && audioAttachment.data_url) {
-      console.log("Audio attachment found, triggering transcription...");
+      console.log("Audio attachment found:", audioAttachment.data_url);
+      console.log("Invoking audio-transcribe function...");
+      
       try {
         const { data, error } = await this.supabase.functions.invoke('audio-transcribe', {
           body: { fileUrl: audioAttachment.data_url },
@@ -154,19 +159,22 @@ class WebhookService {
 
         if (error) {
           console.error("Error transcribing audio:", error);
-          return "[Áudio não transcrito]";
+          return "[Áudio não transcrito - erro]";
         }
         
         if (data?.text) {
-          console.log("Audio transcribed successfully");
+          console.log("Audio transcribed successfully:", data.text.substring(0, 50) + "...");
           return `[Áudio transcrito]: ${data.text}`;
         }
         
+        console.log("Audio transcribed but no text returned.");
         return "[Áudio]";
       } catch (err) {
         console.error("Failed to invoke audio-transcribe:", err);
-        return "[Erro na transcrição de áudio]";
+        return "[Erro na chamada de transcrição]";
       }
+    } else {
+      console.log("No valid audio attachment found in list.");
     }
 
     return null;
@@ -246,6 +254,10 @@ serve(async (req) => {
     const rawWebhook = await req.json();
     console.log("Received Chatwoot webhook event:", rawWebhook?.event);
 
+    // LOG RAW ATTACHMENTS FOR DEBUGGING
+    if (rawWebhook.attachments) console.log("RAW Root Attachments:", JSON.stringify(rawWebhook.attachments));
+    if (rawWebhook.message?.attachments) console.log("RAW Message Attachments:", JSON.stringify(rawWebhook.message.attachments));
+
     // Validate Payload
     let webhook;
     try {
@@ -263,14 +275,12 @@ serve(async (req) => {
 
     const { event, conversation, message_type, sender, account, message } = webhook;
     
-    // Filter supported events
     if (!["conversation_created", "message_created", "message_updated", "conversation_updated"].includes(event)) {
       return new Response(JSON.stringify({ message: "Event ignored" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Filter private/bot messages
     const isPrivate = (message?.private ?? webhook.private) === true;
     const effectiveSender = message?.sender ?? sender;
     
@@ -287,7 +297,6 @@ serve(async (req) => {
       }
     }
 
-    // Validate Account Integration
     const accountId = account?.id || conversation?.id;
     if (!accountId) {
       return new Response(JSON.stringify({ message: "No account_id provided" }), {
@@ -314,11 +323,10 @@ serve(async (req) => {
 
     console.log("Integration ACTIVE for account:", accountId);
 
-    // Determine content (Text or Transcribed Audio)
     let content = webhook.content || message?.content;
-    const attachments = message?.attachments || [];
+    // Check both locations for attachments
+    const attachments = message?.attachments || webhook.attachments || [];
 
-    // Try audio transcription
     const transcribedText = await service.transcribeAudioIfNeeded(attachments);
     if (transcribedText) {
       content = transcribedText;
@@ -332,12 +340,10 @@ serve(async (req) => {
     const derivedMessageType = message?.message_type || message_type;
     const conversationIdStr = conversation?.id.toString();
 
-    // --- Scenario A: Existing Card Updates (Message Created/Updated, Conversation Updated) ---
     if (conversationIdStr && ["message_created", "message_updated", "conversation_updated"].includes(event)) {
       const existingCard = await service.findExistingCard(conversationIdStr);
 
       if (existingCard) {
-        // 1. Handle Conversation Metadata Updates
         if (event === "conversation_updated") {
           console.log("Updating card metadata for conversation:", conversationIdStr);
           const updateData: any = {
@@ -354,10 +360,8 @@ serve(async (req) => {
           });
         }
 
-        // 2. Handle Messages (Created/Updated)
         console.log(`Processing ${event} for conversation:`, conversationIdStr);
 
-        // Deduplication check via signature
         const signature = computeSignature(messageId, conversationIdStr, effectiveSender?.name, derivedMessageType, content);
         if (signature) {
           const isDuplicate = await service.checkDuplicateEvent(signature);
@@ -369,7 +373,6 @@ serve(async (req) => {
           }
         }
 
-        // Logical deduplication against existing content
         if (isDuplicateContent(existingCard.description, content)) {
           console.log('Duplicate message content ignored.');
           return new Response(JSON.stringify({ message: 'Duplicate content ignored', cardId: existingCard.id }), {
@@ -377,7 +380,6 @@ serve(async (req) => {
           });
         }
 
-        // Format Message
         const timestamp = getFormattedTimestamp();
         const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
         const displayName = isAgent ? "Agente" : (effectiveSender?.name || "Cliente");
@@ -386,7 +388,6 @@ serve(async (req) => {
         let updatedDescription: string;
         if (event === "message_updated" && existingCard.description) {
            const lines = existingCard.description.split("\n");
-           // Try to replace last line if it looks like a recent message
            if (lines.length > 0 && lines[lines.length - 1].match(/^\[.*?\]/)) {
              lines[lines.length - 1] = formattedMessage;
              updatedDescription = lines.join("\n");
@@ -397,7 +398,6 @@ serve(async (req) => {
           updatedDescription = existingCard.description ? `${existingCard.description}\n${formattedMessage}` : formattedMessage;
         }
 
-        // Update Card
         const updateData: any = {
           description: updatedDescription,
           priority: determinePriority(updatedDescription),
@@ -418,7 +418,6 @@ serve(async (req) => {
       }
     }
 
-    // --- Scenario B: New Conversation / New Card Creation ---
     if (event === 'conversation_created' && conversationIdStr) {
       const signature = `conv_created:${conversationIdStr}`;
       const isDuplicate = await service.checkDuplicateEvent(signature);
@@ -430,10 +429,6 @@ serve(async (req) => {
       }
     }
 
-    // Logic to create new card (if not exists or if we want to create on specific events)
-    // Usually we create on 'message_created' if no card exists, OR on 'conversation_created'
-    // The logic below tries to find a finalized card to reuse customer profile
-    
     const finalizedCard = await service.findFinalizedCard(conversationIdStr!);
     let customerProfileId = finalizedCard?.customer_profile_id || null;
 
@@ -441,10 +436,7 @@ serve(async (req) => {
        await service.updateCustomerStats(customerProfileId);
     }
 
-    // Verify Inboxes filter
     const conversationInboxId = conversation?.inbox_id?.toString();
-    
-    // Filter columns
     const integrationData: any = integration; 
     const pipeline = integrationData.pipelines; 
     if (!pipeline) {
@@ -453,7 +445,6 @@ serve(async (req) => {
       });
     }
 
-    // Check Inbox Filter if present in integration
     if (conversationInboxId && integration.inbox_id) {
       const allowedInboxIds = integration.inbox_id.split(",").map((id: string) => id.trim());
       if (!allowedInboxIds.includes(conversationInboxId)) {
@@ -473,7 +464,6 @@ serve(async (req) => {
       });
     }
 
-    // Initial Message
     const timestamp = getFormattedTimestamp();
     const isAgent = effectiveSender?.type === "User" || derivedMessageType === "outgoing";
     const displayName = isAgent ? "Agente" : (effectiveSender?.name || "Cliente");
