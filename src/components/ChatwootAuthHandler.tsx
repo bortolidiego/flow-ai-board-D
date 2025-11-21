@@ -160,21 +160,6 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     console.log('📢 Mensagem "app:ready" reenviada');
   };
 
-  // ✅ Simular login com dados de teste
-  const simulateLogin = () => {
-    setContextReceived({
-      user: {
-        id: 1,
-        name: "Agente Teste",
-        email: "agente@teste.com"
-      },
-      account: {
-        id: 1,
-        name: "Conta Teste"
-      }
-    });
-  };
-
   if (isAuthenticating) {
     return (
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-background to-primary/10">
@@ -208,9 +193,6 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
             <Button onClick={forceReady} variant="outline" size="sm" className="gap-2">
               <RefreshCw className="w-4 h-4" />
               Reenviar "Pronto"
-            </Button>
-            <Button onClick={simulateLogin} variant="outline" size="sm">
-              Simular Login
             </Button>
           </div>
 
