@@ -22,6 +22,9 @@ export interface KanbanFilters {
   inactivityDays: number | null;
   dateRange: { start: Date | null; end: Date | null };
   
+  // Filtros do Chatwoot
+  chatwootConversationId: string[]; // IDs das conversas do Chatwoot
+  
   // Flags Booleanas
   isMonetaryLocked: boolean | null;
   isUnassigned: boolean | null;
@@ -50,5 +53,3 @@ export interface SavedView {
   sortBy: SortOption;
   createdAt: Date;
 }
-
-// Removida interface QuickFilter antiga pois agora são dinâmicos
