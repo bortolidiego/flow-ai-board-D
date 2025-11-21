@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { Tables } from '@/integrations/supabase/types';
 
 export type AppRole = 'admin' | 'user';
 
@@ -7,6 +8,7 @@ export function useUserRole() {
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [fullName, setFullName] = useState<string | null>(null);
 
   useEffect(() => {
     const checkRole = async () => {
@@ -16,20 +18,36 @@ export function useUserRole() {
         if (!user) {
           setRole(null);
           setUserId(null);
+          setFullName(null);
           setLoading(false);
           return;
         }
 
         setUserId(user.id);
 
-        // Buscar todas as roles do usuário e decidir a principal
-        const { data: roles, error } = await supabase
+        // 1. Buscar Perfil (nome completo)
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError);
+        }
+        
+        // Usar a tipagem correta para acessar full_name
+        const profileRow = profile as Tables<'profiles'>['Row'] | null;
+        setFullName(profileRow?.full_name || user.email); // Fallback para email
+
+        // 2. Buscar Roles
+        const { data: roles, error: rolesError } = await supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', user.id);
 
-        if (error) {
-          console.error('Error fetching user role:', error);
+        if (rolesError) {
+          console.error('Error fetching user role:', rolesError);
           setRole('user'); // Default para user se houver erro
         } else if (roles && roles.length > 0) {
           const hasAdmin = roles.some((r: any) => r.role === 'admin');
@@ -48,6 +66,7 @@ export function useUserRole() {
       } catch (error) {
         console.error('Error checking role:', error);
         setRole(null);
+        setFullName(null);
       } finally {
         setLoading(false);
       }
@@ -66,5 +85,5 @@ export function useUserRole() {
   const isAdmin = role === 'admin';
   const isUser = role === 'user';
 
-  return { role, isAdmin, isUser, loading, userId };
+  return { role, isAdmin, isUser, loading, userId, fullName };
 }

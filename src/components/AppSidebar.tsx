@@ -1,4 +1,4 @@
-import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText } from "lucide-react";
+import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText, User } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -34,6 +34,12 @@ const menuItems = [
     title: "Changelog",
     url: "/changelog",
     icon: FileText,
+    requireAdmin: false,
+  },
+  {
+    title: "Perfil",
+    url: "/profile",
+    icon: User,
     requireAdmin: false,
   },
 ];
