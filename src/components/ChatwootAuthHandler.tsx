@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Bot, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
+import { Loader2, Bot, AlertCircle, RefreshCw, LogIn, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 interface ChatwootUser {
   id: number;
@@ -42,7 +44,7 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       console.log('📬 postMessage recebido:', event.origin, event.data);
-      setRawMessages(prev => [...prev.slice(-10), event.data]); // últimos 10
+      setRawMessages(prev => [...prev.slice(-10), { timestamp: new Date().toLocaleTimeString(), data: event.data }]); // últimos 10
 
       // Detectar Chatwoot por dados conhecidos
       const data = event.data;
@@ -225,14 +227,46 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     );
   }
 
-  // Removido: tela de espera por contexto
-  // if (waitingForContext && isChatwootFrame) {
-  //   return (
-  //     <div className="h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-8">
-  //       ...
-  //     </div>
-  //   );
-  // }
-
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      
+      {/* Debug Panel - Visível apenas em iframe */}
+      {isChatwootFrame && (
+        <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-card/95 backdrop-blur-md border-t border-border/50 p-2">
+          <Card className="border-none shadow-lg">
+            <CardHeader className="p-3 pb-1 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Bug className="w-4 h-4 text-red-500" />
+                Debug Chatwoot Context
+              </CardTitle>
+              <Button onClick={forceReady} variant="ghost" size="sm" className="h-6 text-xs">
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Reenviar Ready
+              </Button>
+            </CardHeader>
+            <CardContent className="p-3 pt-1">
+              <div className="text-xs space-y-1">
+                <p><strong>Status:</strong> {contextReceived ? 'Contexto Recebido' : 'Aguardando Contexto...'}</p>
+                <p><strong>Usuário:</strong> {contextReceived?.user?.email || 'N/A'}</p>
+                <p><strong>Conta ID:</strong> {contextReceived?.account?.id || 'N/A'}</p>
+              </div>
+              <Separator className="my-2" />
+              <h4 className="text-xs font-semibold mb-1">Últimas Mensagens (postMessage)</h4>
+              <ScrollArea className="h-[100px] border rounded-md p-2 bg-background">
+                <div className="space-y-1 text-[10px] font-mono">
+                  {rawMessages.map((msg, index) => (
+                    <div key={index} className="border-b border-border/50 pb-1">
+                      <span className="text-muted-foreground mr-1">{msg.timestamp}:</span>
+                      <pre className="whitespace-pre-wrap break-words">{JSON.stringify(msg.data, null, 2).substring(0, 200)}...</pre>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
+  );
 };
