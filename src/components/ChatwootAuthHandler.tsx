@@ -20,7 +20,8 @@ interface ChatwootContext {
 
 export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const { isChatwootFrame, context, agentName, agentEmail } = useChatwoot();
+  const [authRetries, setAuthRetries] = useState(0);
+  const { isChatwootFrame, context, conversationId, agentName } = useChatwoot();
   const { toast } = useToast();
 
   // Dados fixos para teste manual
@@ -32,6 +33,62 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
   const MANUAL_TEST_ACCOUNT = {
     id: "1",
     name: "KB Tech Account",
+  };
+
+  // Função para verificar conectividade com Supabase
+  const checkSupabaseConnectivity = async (): Promise<boolean> => {
+    try {
+      // Tenta uma operação simples para verificar conectividade
+      const { error } = await supabase.auth.getSession();
+      return !error;
+    } catch (error) {
+      console.warn('Supabase connectivity check failed:', error);
+      return false;
+    }
+  };
+
+  // Função para tentar login com retry
+  const attemptLogin = async (email: string, password: string, maxRetries = 3): Promise<boolean> => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔐 Tentativa ${attempt}/${maxRetries} de login para ${email}`);
+        
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (!error) {
+          console.log('✅ Login bem-sucedido');
+          return true;
+        }
+
+        console.warn(`❌ Tentativa ${attempt} falhou:`, error.message);
+        
+        // Se não é erro de rede, não retry
+        if (!error.message.includes('fetch') && !error.message.includes('network')) {
+          break;
+        }
+
+        // Espera antes do próximo retry
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      } catch (error) {
+        console.warn(`❌ Erro na tentativa ${attempt}:`, error);
+        
+        // Se não é erro de rede, não retry
+        if (!String(error).includes('fetch') && !String(error).includes('network')) {
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+    
+    return false;
   };
 
   // ✅ Quando contexto chega, fazer login automático
@@ -58,6 +115,7 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
   ) => {
     console.log('🔑 === AUTO-LOGIN INICIADO ===', cwUser);
 
+    // Verifica se já está logado
     const { data: session } = await supabase.auth.getSession();
     if (session?.session?.user?.email === cwUser.email) {
       console.log('✅ Já logado');
@@ -68,6 +126,19 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     setIsAuthenticating(true);
 
     try {
+      // Verifica conectividade antes de prosseguir
+      const isConnected = await checkSupabaseConnectivity();
+      if (!isConnected) {
+        console.warn('❌ Sem conectividade com Supabase, pulando auto-login');
+        toast({
+          title: "Problema de conectividade",
+          description: "Não foi possível conectar ao servidor. Verifique sua conexão com a internet.",
+          variant: "destructive"
+        });
+        setIsAuthenticating(false);
+        return;
+      }
+
       console.log('📞 Chamando chatwoot-sso...');
       const { data, error } = await supabase.functions.invoke('chatwoot-sso', {
         body: { email: cwUser.email, name: cwUser.name, identifier: cwAccount.id }
@@ -85,15 +156,11 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
         throw new Error('SSO não retornou senha');
       }
 
-      console.log('🔐 Fazendo login no Supabase...');
-      const { error: loginError } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password
-      });
-
-      if (loginError) {
-        console.error('❌ Erro no login Supabase:', loginError);
-        throw new Error(`Login falhou: ${loginError.message}`);
+      // Tenta login com retry
+      const loginSuccess = await attemptLogin(data.email, data.password);
+      
+      if (!loginSuccess) {
+        throw new Error('Falha no login após múltiplas tentativas');
       }
 
       console.log('✅ === AUTO-LOGIN SUCESSO ===');
@@ -101,9 +168,22 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
       
     } catch (error: any) {
       console.error('❌ AUTO-LOGIN FALHOU:', error);
+      
+      // Mostra erro específico baseado no tipo
+      let errorMessage = "Erro no login automático";
+      let errorDescription = error.message || "Tente novamente ou entre manualmente.";
+      
+      if (error.message?.includes('fetch') || error.message?.includes('network')) {
+        errorMessage = "Problema de conectividade";
+        errorDescription = "Verifique sua conexão com a internet e tente novamente.";
+      } else if (error.message?.includes('SSO')) {
+        errorMessage = "Erro na configuração SSO";
+        errorDescription = "Entre em contato com o administrador do sistema.";
+      }
+      
       toast({
-        title: "Erro no login automático",
-        description: error.message,
+        title: errorMessage,
+        description: errorDescription,
         variant: "destructive"
       });
     } finally {
@@ -120,6 +200,11 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
           {context?.user && (
             <p className="text-sm text-muted-foreground mt-2">
               Como {context.user.name} ({context.user.email})
+            </p>
+          )}
+          {authRetries > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Tentativa {authRetries}/3
             </p>
           )}
         </div>
