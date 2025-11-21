@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Bot, AlertCircle } from 'lucide-react';
+import { Loader2, Bot, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -22,34 +22,68 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
   const [isChatwootFrame, setIsChatwootFrame] = useState(false);
   const [waitingForContext, setWaitingForContext] = useState(false);
   const [contextReceived, setContextReceived] = useState<ChatwootContext | null>(null);
+  const [rawMessages, setRawMessages] = useState<any[]>([]); // Para debug
   const { toast } = useToast();
 
-  // ✅ 1. Escutar postMessage do Chatwoot
+  // ✅ 1. Escutar TODOS os postMessage e detectar Chatwoot
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      // Verifica se é um evento de contexto do Chatwoot
-      if (event.data?.event === 'appContext' || event.data?.type === 'dashboard:ready') {
-        console.log('📬 Contexto recebido do Chatwoot:', event.data);
-        setContextReceived(event.data.data || event.data);
+      // Log tudo para debug
+      console.log('📬 postMessage recebido:', event.origin, event.data);
+      setRawMessages(prev => [...prev.slice(-10), event.data]); // últimos 10
+
+      // Detectar Chatwoot por dados conhecidos
+      const data = event.data;
+      if (
+        data?.event === 'appContext' || 
+        data?.type === 'dashboard:ready' ||
+        (data?.user?.email && data?.account?.id) // Estrutura esperada
+      ) {
+        console.log('📬 Contexto Chatwoot identificado:', data);
+        setContextReceived(data.data || data);
         setWaitingForContext(false);
+        return;
+      }
+
+      // Tentativa de encontrar dados aninhados
+      if (data && typeof data === 'object') {
+        const findUser = (obj: any): any => {
+          if (obj?.user?.email) return obj;
+          for (const key in obj) {
+            if (typeof obj[key] === 'object' && obj[key] !== null) {
+              const found = findUser(obj[key]);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+        const found = findUser(data);
+        if (found) {
+          console.log('📬 Usuário encontrado em dados aninhados:', found);
+          setContextReceived(found);
+          setWaitingForContext(false);
+        }
       }
     };
 
     window.addEventListener('message', handleMessage);
-    
+
     // ✅ 2. Avisar Chatwoot que estamos prontos
     window.parent.postMessage('app:ready', '*');
+    console.log('📢 Mensagem "app:ready" enviada para parent');
 
-    // ✅ 3. Detectar se estamos em iframe do Chatwoot
+    // ✅ 3. Forçar detecção de iframe
     const inIframe = window.self !== window.top;
+    console.log('🖼️ Em iframe:', inIframe);
     if (inIframe) {
       setIsChatwootFrame(true);
       setWaitingForContext(true);
       
       // Timeout para fallback
       const timeout = setTimeout(() => {
+        console.log('⏰ Timeout - Nenhum contexto recebido');
         setWaitingForContext(false);
-      }, 10000);
+      }, 15000);
       
       return () => {
         window.removeEventListener('message', handleMessage);
@@ -120,6 +154,27 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     }
   };
 
+  // ✅ Forçar reenvio de "app:ready"
+  const forceReady = () => {
+    window.parent.postMessage('app:ready', '*');
+    console.log('📢 Mensagem "app:ready" reenviada');
+  };
+
+  // ✅ Simular login com dados de teste
+  const simulateLogin = () => {
+    setContextReceived({
+      user: {
+        id: 1,
+        name: "Agente Teste",
+        email: "agente@teste.com"
+      },
+      account: {
+        id: 1,
+        name: "Conta Teste"
+      }
+    });
+  };
+
   if (isAuthenticating) {
     return (
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-background to-primary/10">
@@ -149,6 +204,16 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
             </p>
           </div>
 
+          <div className="flex gap-2">
+            <Button onClick={forceReady} variant="outline" size="sm" className="gap-2">
+              <RefreshCw className="w-4 h-4" />
+              Reenviar "Pronto"
+            </Button>
+            <Button onClick={simulateLogin} variant="outline" size="sm">
+              Simular Login
+            </Button>
+          </div>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -166,6 +231,13 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
               </code>
             </CardContent>
           </Card>
+
+          <details className="text-left">
+            <summary className="text-xs text-muted-foreground cursor-pointer">Ver mensagens recebidas</summary>
+            <pre className="text-[8px] bg-black/10 p-2 rounded mt-2 max-h-32 overflow-auto">
+              {JSON.stringify(rawMessages, null, 2)}
+            </pre>
+          </details>
 
           <Button 
             variant="outline" 
