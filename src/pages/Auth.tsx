@@ -19,6 +19,9 @@ export default function Auth() {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite_token');
 
+  // URL de redirecionamento com hash para HashRouter
+  const redirectUrl = `${window.location.origin}/#`;
+
   // Redirect if already authenticated
   useEffect(() => {
     const checkUser = async () => {
@@ -54,6 +57,9 @@ export default function Auth() {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: {
+          redirectTo: redirectUrl,
+        } as any // Força 'any' para permitir redirectTo
       });
 
       if (error) throw error;
@@ -84,7 +90,7 @@ export default function Auth() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: redirectUrl,
         },
       });
 
@@ -99,6 +105,9 @@ export default function Auth() {
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: {
+          redirectTo: redirectUrl,
+        } as any // Força 'any' para permitir redirectTo
       });
 
       if (signInError) throw signInError;
