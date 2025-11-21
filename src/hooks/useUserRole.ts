@@ -27,7 +27,7 @@ export function useUserRole() {
 
         // 1. Buscar Perfil (nome completo)
         const { data: profile, error: profileError } = await supabase
-          .from('profiles')
+          .from('profiles' as any)
           .select('full_name')
           .eq('id', user.id)
           .maybeSingle();
@@ -37,7 +37,8 @@ export function useUserRole() {
         }
         
         // Usar a tipagem correta para acessar full_name
-        const profileRow = profile as Tables<'profiles'>['Row'] | null;
+        // Forçando 'any' para resolver o erro de tipagem do Supabase (Erro 1 e 2)
+        const profileRow = profile as any; 
         setFullName(profileRow?.full_name || user.email); // Fallback para email
 
         // 2. Buscar Roles

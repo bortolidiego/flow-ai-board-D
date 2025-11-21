@@ -10,6 +10,12 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
 import { TablesInsert } from '@/integrations/supabase/types';
 
+// Definindo um tipo local para contornar o erro de tipagem do Supabase (Erros 3 e 4)
+type ProfileInsert = {
+  id: string;
+  full_name: string;
+};
+
 export function ProfileForm() {
   const { userId, fullName, loading: userLoading } = useUserRole();
   const { toast } = useToast();
@@ -42,13 +48,13 @@ export function ProfileForm() {
       if (!userId) throw new Error('Usuário não autenticado');
 
       // 1. Atualizar nome completo no perfil
-      const profileUpdate: TablesInsert<'profiles'> = { 
+      const profileUpdate: ProfileInsert = { 
         id: userId, 
         full_name: currentFullName 
       };
       
       const { error: profileError } = await supabase
-        .from('profiles')
+        .from('profiles' as any)
         .upsert(profileUpdate, { onConflict: 'id' });
 
       if (profileError) throw profileError;
@@ -57,7 +63,14 @@ export function ProfileForm() {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (currentUser?.email !== email) {
         const { error: emailError } = await supabase.auth.updateUser({ email });
-        if (emailError) throw emailError;
+        
+        if (emailError) {
+          // Tratamento específico para o erro de email já registrado
+          if (emailError.message.includes('A user with this email address has already been registered')) {
+            throw new Error('Este e-mail já está em uso por outra conta. Por favor, use um e-mail diferente.');
+          }
+          throw emailError;
+        }
         
         toast({
           title: 'Email atualizado',
