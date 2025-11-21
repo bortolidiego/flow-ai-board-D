@@ -70,8 +70,18 @@ export default function AcceptInvite() {
 
   const handleAcceptInvite = async () => {
     if (!user) {
-      // Se não está logado, redireciona para auth com token
+      // Se não está logado, redireciona para auth com o token do convite
       navigate(`/auth?invite_token=${token}`);
+      return;
+    }
+
+    // Se logado, mas com email errado, pede para fazer logout
+    if (user.email?.toLowerCase() !== invite.email.toLowerCase()) {
+      toast({
+        title: 'Email incorreto',
+        description: `Por favor, faça logout e entre com o email ${invite.email} para aceitar o convite.`,
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -183,7 +193,7 @@ export default function AcceptInvite() {
                 <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
                   <p className="text-sm text-destructive">
                     ⚠️ O email da sua conta não corresponde ao convite. 
-                    Você precisa fazer login com <strong>{invite.email}</strong>
+                    Você precisa fazer logout e entrar com o email <strong>{invite.email}</strong>
                   </p>
                 </div>
               )}
@@ -208,7 +218,7 @@ export default function AcceptInvite() {
                 Você precisa estar logado para aceitar este convite.
               </p>
               <Button onClick={handleAcceptInvite} className="w-full">
-                Fazer Login / Criar Conta
+                Fazer Login / Criar Conta com {invite.email}
               </Button>
             </>
           )}

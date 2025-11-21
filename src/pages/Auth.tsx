@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,18 +16,35 @@ export default function Auth() {
   const [checking, setChecking] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite_token');
 
   // Redirect if already authenticated
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        navigate('/', { replace: true });
+        // Se logado e com token de convite, redireciona para aceitar
+        if (inviteToken) {
+          navigate(`/accept-invite?token=${inviteToken}`, { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
       }
       setChecking(false);
     };
     checkUser();
-  }, [navigate]);
+  }, [navigate, inviteToken]);
+
+  const handleSuccess = () => {
+    if (inviteToken) {
+      // Se houver token, redireciona para a página de aceitação
+      navigate(`/accept-invite?token=${inviteToken}`);
+    } else {
+      // Caso contrário, vai para a home
+      navigate('/');
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +63,7 @@ export default function Auth() {
         description: 'Redirecionando...',
       });
 
-      navigate('/');
+      handleSuccess();
     } catch (error: any) {
       toast({
         title: 'Erro ao fazer login',
@@ -77,6 +94,17 @@ export default function Auth() {
         title: 'Conta criada com sucesso!',
         description: 'Você já pode fazer login.',
       });
+      
+      // Após o cadastro, tenta logar automaticamente e processar o convite
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) throw signInError;
+      
+      handleSuccess();
+
     } catch (error: any) {
       toast({
         title: 'Erro ao criar conta',
