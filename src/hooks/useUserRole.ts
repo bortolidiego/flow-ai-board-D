@@ -52,7 +52,9 @@ export function useUserRole() {
           setRole('user'); // Default para user se houver erro
         } else if (roles && roles.length > 0) {
           const hasAdmin = roles.some((r: any) => r.role === 'admin');
-          setRole(hasAdmin ? 'admin' : 'user');
+          const determinedRole = hasAdmin ? 'admin' : 'user';
+          setRole(determinedRole);
+          console.log(`[useUserRole] User ${user.email} has roles: ${roles.map(r => r.role).join(', ')}. Determined role: ${determinedRole}`);
         } else {
           // Se não tem role, criar como user
           const { error: insertError } = await supabase
@@ -63,6 +65,7 @@ export function useUserRole() {
             console.error('Error creating user role:', insertError);
           }
           setRole('user');
+          console.log(`[useUserRole] User ${user.email} assigned default role: user`);
         }
       } catch (error) {
         console.error('Error checking role:', error);
