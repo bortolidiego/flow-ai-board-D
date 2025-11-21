@@ -12,7 +12,7 @@ import BrainNew from "./pages/BrainNew";
 import Changelog from "./pages/Changelog";
 import Auth from "./pages/Auth";
 import AcceptInvite from "./pages/AcceptInvite";
-import InviteSignup from "./pages/InviteSignup"; // Importar nova página
+import UpdatePassword from "./pages/UpdatePassword"; // Importar nova página
 import ProvisionWrapper from "./components/ProvisionWrapper";
 import NotFound from "./pages/NotFound";
 
@@ -28,7 +28,7 @@ const App = () => (
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/accept-invite" element={<AcceptInvite />} />
-            <Route path="/invite-signup" element={<InviteSignup />} /> {/* Nova Rota */}
+            <Route path="/update-password" element={<UpdatePassword />} /> {/* Nova Rota */}
             <Route path="/provision" element={<ProvisionWrapper />} />
             
             <Route

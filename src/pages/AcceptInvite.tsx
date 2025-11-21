@@ -38,6 +38,7 @@ export default function AcceptInvite() {
     }
 
     try {
+      // Busca o convite (usando anon key, RLS deve permitir)
       const { data, error } = await supabase
         .from('workspace_invites')
         .select(`
@@ -70,8 +71,11 @@ export default function AcceptInvite() {
 
   const handleAcceptInvite = async () => {
     if (!user) {
-      // Se não está logado, redireciona para a página de criação de senha
-      navigate(`/invite-signup?token=${token}`);
+      toast({
+        title: 'Ação necessária',
+        description: 'Por favor, use o link de redefinição de senha enviado por email para definir sua senha e aceitar o convite.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -89,6 +93,7 @@ export default function AcceptInvite() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
+      // Chama a função Edge para aceitar o convite
       const response = await supabase.functions.invoke('accept-invite', {
         body: { token },
         headers: {
@@ -213,14 +218,12 @@ export default function AcceptInvite() {
               </Button>
             </>
           ) : (
-            <>
-              <p className="text-sm text-muted-foreground text-center">
-                Para aceitar o convite, você precisa criar uma senha para o email <strong>{invite.email}</strong>.
+            <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg">
+              <p className="text-sm text-yellow-600">
+                ⚠️ Você precisa definir sua senha e fazer login para aceitar o convite.
+                Por favor, use o link de redefinição de senha enviado para <strong>{invite.email}</strong>.
               </p>
-              <Button onClick={handleAcceptInvite} className="w-full">
-                Criar Senha e Aceitar Convite
-              </Button>
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
