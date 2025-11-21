@@ -42,10 +42,7 @@ export default function AcceptInvite() {
         .from('workspace_invites')
         .select(`
           *,
-          workspaces(name),
-          invited_by_user:workspace_members!inner(
-            profiles:profiles(id, full_name)
-          )
+          workspaces(name)
         `)
         .eq('token', token)
         .eq('status', 'pending')

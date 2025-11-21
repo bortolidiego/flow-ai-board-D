@@ -188,6 +188,7 @@ export function WorkspaceMembersDialog({
           email: inviteEmail.toLowerCase(),
           role: inviteRole,
           invited_by: currentUser.id,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 dias a partir de agora
         })
         .select()
         .single();
