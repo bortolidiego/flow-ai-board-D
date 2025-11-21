@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUserRole } from '@/hooks/useUserRole';
 import { TablesInsert } from '@/integrations/supabase/types';
 
-// Definindo um tipo local para contornar o erro de tipagem do Supabase (Erros 3 e 4)
+// Definindo um tipo local para contornar o erro de tipagem do Supabase
 type ProfileInsert = {
   id: string;
   full_name: string;
@@ -62,7 +62,12 @@ export function ProfileForm() {
       // 2. Atualizar email (se mudou)
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (currentUser?.email !== email) {
-        const { error: emailError } = await supabase.auth.updateUser({ email });
+        // Forçando o tipo 'any' para incluir email_redirect_to, que é a forma correta de passar
+        // o parâmetro para o Supabase, apesar da tipagem do SDK estar incorreta/desatualizada.
+        const { error: emailError } = await supabase.auth.updateUser({ 
+          email,
+          email_redirect_to: `${window.location.origin}/#`
+        } as any);
         
         if (emailError) {
           // Tratamento específico para o erro de email já registrado
