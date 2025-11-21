@@ -153,6 +153,7 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     if (session?.session?.user?.email === cwUser.email) {
       console.log('✅ Já logado');
       setIsAuthenticating(false);
+      setWaitingForContext(false); // ✅ Importante: sair da tela de espera
       return;
     }
 
@@ -189,6 +190,9 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
 
       console.log('✅ === AUTO-LOGIN SUCESSO ===');
       toast({ title: `Bem-vindo, ${cwUser.name}!` });
+      
+      // ✅ Importante: sair da tela de espera após login bem-sucedido
+      setWaitingForContext(false);
 
     } catch (error: any) {
       console.error('❌ AUTO-LOGIN FALHOU:', error);
@@ -197,6 +201,8 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
         description: error.message,
         variant: "destructive"
       });
+      // Mesmo em erro, sair da tela de espera para permitir login manual
+      setWaitingForContext(false);
     } finally {
       setIsAuthenticating(false);
     }
