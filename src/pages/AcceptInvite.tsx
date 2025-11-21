@@ -3,8 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Mail, Calendar, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 export default function AcceptInvite() {
   const [searchParams] = useSearchParams();
@@ -38,7 +40,13 @@ export default function AcceptInvite() {
     try {
       const { data, error } = await supabase
         .from('workspace_invites')
-        .select('*, workspaces(name)')
+        .select(`
+          *,
+          workspaces(name),
+          invited_by_user:workspace_members!inner(
+            profiles:profiles(id, full_name)
+          )
+        `)
         .eq('token', token)
         .eq('status', 'pending')
         .maybeSingle();
@@ -65,6 +73,7 @@ export default function AcceptInvite() {
 
   const handleAcceptInvite = async () => {
     if (!user) {
+      // Se não está logado, redireciona para auth com token
       navigate(`/auth?invite_token=${token}`);
       return;
     }
@@ -89,11 +98,13 @@ export default function AcceptInvite() {
         description: `Você agora é membro de ${invite.workspaces.name}`,
       });
 
+      // Redirecionar para o workspace
       navigate('/');
     } catch (err: any) {
+      console.error('Error accepting invite:', err);
       toast({
         title: 'Erro ao aceitar convite',
-        description: err.message,
+        description: err.message || 'Erro desconhecido',
         variant: 'destructive',
       });
     } finally {
@@ -142,18 +153,35 @@ export default function AcceptInvite() {
             Você foi convidado para participar de <strong>{invite.workspaces.name}</strong>
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="bg-muted p-4 rounded-lg space-y-2">
-            <p className="text-sm"><strong>Email:</strong> {invite.email}</p>
-            <p className="text-sm"><strong>Permissão:</strong> {invite.role === 'admin' ? 'Administrador' : 'Usuário'}</p>
-            <p className="text-sm"><strong>Expira em:</strong> {new Date(invite.expires_at).toLocaleDateString('pt-BR')}</p>
+        <CardContent className="space-y-6">
+          <div className="bg-muted p-4 rounded-lg space-y-3">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm">
+                <strong>Email:</strong> {invite.email}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm">
+                <strong>Permissão:</strong> {invite.role === 'admin' ? 'Administrador' : 'Usuário'}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm">
+                <strong>Expira em:</strong> {format(new Date(invite.expires_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+              </span>
+            </div>
           </div>
 
           {user ? (
             <>
-              <p className="text-sm text-muted-foreground">
+              <div className="text-center text-sm text-muted-foreground">
                 Conectado como <strong>{user.email}</strong>
-              </p>
+              </div>
               {user.email?.toLowerCase() !== invite.email.toLowerCase() && (
                 <div className="bg-destructive/10 border border-destructive/20 p-3 rounded-lg">
                   <p className="text-sm text-destructive">
@@ -179,7 +207,7 @@ export default function AcceptInvite() {
             </>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground text-center">
                 Você precisa estar logado para aceitar este convite.
               </p>
               <Button onClick={handleAcceptInvite} className="w-full">

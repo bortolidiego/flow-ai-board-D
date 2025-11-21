@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -62,7 +63,10 @@ serve(async (req) => {
     // Find invite by token
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from('workspace_invites')
-      .select('*, workspaces(name)')
+      .select(`
+        *,
+        workspaces(name)
+      `)
       .eq('token', token)
       .eq('status', 'pending')
       .single();

@@ -27,7 +27,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { UserPlus, Trash2, Shield, User, Loader2 } from 'lucide-react';
+import { UserPlus, Trash2, Shield, User, Loader2, Copy, Check } from 'lucide-react';
 import { useUserRole } from '@/hooks/useUserRole';
 
 interface WorkspaceMember {
@@ -56,6 +56,7 @@ export function WorkspaceMembersDialog({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'user'>('user');
   const [inviting, setInviting] = useState(false);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
   const { toast } = useToast();
   const { userId: currentUserId, isAdmin } = useUserRole();
 
@@ -199,7 +200,7 @@ export function WorkspaceMembersDialog({
       console.log('Invite created successfully:', invite);
 
       // Copiar link do convite para clipboard
-      const inviteLink = `${window.location.origin}/accept-invite?token=${invite.token}`;
+      const inviteLink = `${window.location.origin}/#/accept-invite?token=${invite.token}`;
       
       try {
         await navigator.clipboard.writeText(inviteLink);
@@ -250,6 +251,25 @@ export function WorkspaceMembersDialog({
       toast({
         title: 'Erro ao revogar convite',
         description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleCopyInviteLink = async (token: string) => {
+    const inviteLink = `${window.location.origin}/#/accept-invite?token=${token}`;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopiedInviteId(token);
+      toast({
+        title: 'Link copiado!',
+        description: 'O link do convite foi copiado para a área de transferência.',
+      });
+      setTimeout(() => setCopiedInviteId(null), 2000);
+    } catch (error) {
+      toast({
+        title: 'Erro ao copiar link',
+        description: 'Não foi possível copiar o link. Tente novamente.',
         variant: 'destructive',
       });
     }
@@ -410,6 +430,7 @@ export function WorkspaceMembersDialog({
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Permissão</TableHead>
+                  <TableHead>Convidado por</TableHead>
                   <TableHead>Expira em</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -424,16 +445,32 @@ export function WorkspaceMembersDialog({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
+                      Você
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
                       {new Date(invite.expires_at).toLocaleDateString('pt-BR')}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRevokeInvite(invite.id)}
-                      >
-                        Revogar
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleCopyInviteLink(invite.token)}
+                        >
+                          {copiedInviteId === invite.token ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRevokeInvite(invite.id)}
+                        >
+                          Revogar
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
