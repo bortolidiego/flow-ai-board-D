@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Bot, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, Bot, AlertCircle, RefreshCw, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+interface ChatwootUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
 interface ChatwootContext {
-  user?: {
-    id: number;
-    name: string;
-    email: string;
-  };
+  user?: ChatwootUser;
   account?: {
     id: number;
     name: string;
@@ -25,6 +27,17 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
   const [rawMessages, setRawMessages] = useState<any[]>([]); // Para debug
   const { toast } = useToast();
 
+  // Dados fixos para teste manual
+  const MANUAL_TEST_USER = {
+    email: "diego.bortoli@kbtech.com.br",
+    name: "Diego Bortoli",
+    id: 12345,
+  };
+  const MANUAL_TEST_ACCOUNT = {
+    id: "1", // Corrigido para string
+    name: "KB Tech Account",
+  };
+
   // ✅ 1. Escutar TODOS os postMessage e detectar Chatwoot
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -34,35 +47,28 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
 
       // Detectar Chatwoot por dados conhecidos
       const data = event.data;
-      if (
-        data?.event === 'appContext' || 
-        data?.type === 'dashboard:ready' ||
-        (data?.user?.email && data?.account?.id) // Estrutura esperada
-      ) {
-        console.log('📬 Contexto Chatwoot identificado:', data);
-        setContextReceived(data.data || data);
+
+      // Tenta encontrar dados aninhados
+      const findContext = (obj: any): ChatwootContext | null => {
+        if (obj?.user?.email && obj?.account?.id) {
+          return obj;
+        }
+        for (const key in obj) {
+          if (typeof obj[key] === 'object' && obj[key] !== null) {
+            const found = findContext(obj[key]);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      
+      const foundContext = findContext(data);
+
+      if (foundContext) {
+        console.log('📬 Contexto Chatwoot identificado:', foundContext);
+        setContextReceived(foundContext);
         setWaitingForContext(false);
         return;
-      }
-
-      // Tentativa de encontrar dados aninhados
-      if (data && typeof data === 'object') {
-        const findUser = (obj: any): any => {
-          if (obj?.user?.email) return obj;
-          for (const key in obj) {
-            if (typeof obj[key] === 'object' && obj[key] !== null) {
-              const found = findUser(obj[key]);
-              if (found) return found;
-            }
-          }
-          return null;
-        };
-        const found = findUser(data);
-        if (found) {
-          console.log('📬 Usuário encontrado em dados aninhados:', found);
-          setContextReceived(found);
-          setWaitingForContext(false);
-        }
       }
     };
 
@@ -116,6 +122,7 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     const { data: session } = await supabase.auth.getSession();
     if (session?.session?.user?.email === cwUser.email) {
       console.log('✅ Já logado');
+      setIsAuthenticating(false);
       return;
     }
 
@@ -159,6 +166,10 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     window.parent.postMessage('app:ready', '*');
     console.log('📢 Mensagem "app:ready" reenviada');
   };
+  
+  const handleManualLogin = () => {
+    performAutoLogin(MANUAL_TEST_USER, MANUAL_TEST_ACCOUNT);
+  };
 
   if (isAuthenticating) {
     return (
@@ -189,10 +200,14 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 justify-center">
             <Button onClick={forceReady} variant="outline" size="sm" className="gap-2">
               <RefreshCw className="w-4 h-4" />
               Reenviar "Pronto"
+            </Button>
+            <Button onClick={handleManualLogin} size="sm" className="gap-2">
+              <LogIn className="w-4 h-4" />
+              Login Manual
             </Button>
           </div>
 
