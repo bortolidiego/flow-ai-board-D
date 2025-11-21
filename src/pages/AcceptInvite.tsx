@@ -70,8 +70,8 @@ export default function AcceptInvite() {
 
   const handleAcceptInvite = async () => {
     if (!user) {
-      // Se não está logado, redireciona para auth com o token do convite
-      navigate(`/auth?invite_token=${token}`);
+      // Se não está logado, redireciona para a página de criação de senha
+      navigate(`/invite-signup?token=${token}`);
       return;
     }
 
@@ -215,10 +215,10 @@ export default function AcceptInvite() {
           ) : (
             <>
               <p className="text-sm text-muted-foreground text-center">
-                Você precisa estar logado para aceitar este convite.
+                Para aceitar o convite, você precisa criar uma senha para o email <strong>{invite.email}</strong>.
               </p>
               <Button onClick={handleAcceptInvite} className="w-full">
-                Fazer Login / Criar Conta com {invite.email}
+                Criar Senha e Aceitar Convite
               </Button>
             </>
           )}
