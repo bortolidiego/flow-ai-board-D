@@ -92,7 +92,7 @@ export default function AcceptInvite() {
 
       toast({
         title: 'Convite aceito!',
-        description: `Você agora é membro de ${invite.workspaces.name}`,
+        description: `Você agora é membro de ${invite.workspaces?.name}`,
       });
 
       // Redirecionar para o workspace
@@ -147,7 +147,7 @@ export default function AcceptInvite() {
             <CardTitle>Convite para Workspace</CardTitle>
           </div>
           <CardDescription>
-            Você foi convidado para participar de <strong>{invite.workspaces.name}</strong>
+            Você foi convidado para participar de <strong>{invite.workspaces?.name}</strong>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
