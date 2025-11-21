@@ -107,19 +107,9 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     console.log('🖼️ Em iframe:', inIframe);
     if (inIframe) {
       setIsChatwootFrame(true);
-      setWaitingForContext(true);
-
-      // Timeout para fallback - tentar login automático
-      const timeout = setTimeout(() => {
-        console.log('⏰ Timeout - Tentando login automático sem contexto');
-        performAutoLogin(MANUAL_TEST_USER, MANUAL_TEST_ACCOUNT);
-      }, 5000); // Reduzido para 5 segundos
-
-      return () => {
-        window.removeEventListener('message', handleMessage);
-        clearInterval(interval);
-        clearTimeout(timeout);
-      };
+      // Removido: setWaitingForContext(true);
+      // Agora vai direto para o login automático
+      performAutoLogin(MANUAL_TEST_USER, MANUAL_TEST_ACCOUNT);
     }
 
     return () => {
@@ -235,67 +225,14 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
     );
   }
 
-  if (waitingForContext && isChatwootFrame) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-8">
-        <div className="max-w-md w-full space-y-6 text-center">
-          <Bot className="w-24 h-24 text-primary/50 mx-auto" />
-
-          <div>
-            <h2 className="text-2xl font-bold mb-2">Aguardando Chatwoot...</h2>
-            <p className="text-muted-foreground mb-4">
-              Procurando dados do agente...
-            </p>
-          </div>
-
-          <div className="flex gap-2 justify-center">
-            <Button onClick={forceReady} variant="outline" size="sm" className="gap-2">
-              <RefreshCw className="w-4 h-4" />
-              Reenviar "Pronto"
-            </Button>
-            <Button onClick={handleManualLogin} size="sm" className="gap-2">
-              <LogIn className="w-4 h-4" />
-              Login Manual
-            </Button>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-yellow-500" />
-                Configuração Necessária
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs space-y-2 text-left">
-              <p><strong>Para login automático:</strong></p>
-              <p>1. No Chatwoot, edite seu app</p>
-              <p>2. Marque "Habilitar contexto do agente"</p>
-              <p>3. Use a URL simples:</p>
-              <code className="block bg-muted p-2 rounded text-[10px]">
-                https://flow-ai-board-d.vercel.app
-              </code>
-            </CardContent>
-          </Card>
-
-          <details className="text-left">
-            <summary className="text-xs text-muted-foreground cursor-pointer">Ver mensagens recebidas</summary>
-            <pre className="text-[8px] bg-black/10 p-2 rounded mt-2 max-h-32 overflow-auto">
-              {JSON.stringify(rawMessages, null, 2)}
-            </pre>
-          </details>
-
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={() => setWaitingForContext(false)}
-            className="w-full"
-          >
-            Login Manual
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Removido: tela de espera por contexto
+  // if (waitingForContext && isChatwootFrame) {
+  //   return (
+  //     <div className="h-screen flex flex-col items-center justify-center bg-gradient-to-br from-background to-primary/10 p-8">
+  //       ...
+  //     </div>
+  //   );
+  // }
 
   return <>{children}</>;
 };
