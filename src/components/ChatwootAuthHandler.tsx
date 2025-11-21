@@ -5,57 +5,78 @@ import { Loader2, Bot, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-// ❌ REMOVIDO useLocation daqui
+interface ChatwootContext {
+  user?: {
+    id: number;
+    name: string;
+    email: string;
+  };
+  account?: {
+    id: number;
+    name: string;
+  };
+}
 
 export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isChatwootFrame, setIsChatwootFrame] = useState(false);
   const [waitingForContext, setWaitingForContext] = useState(false);
-  const [emailFromUrl, setEmailFromUrl] = useState<string | null>(null);
+  const [contextReceived, setContextReceived] = useState<ChatwootContext | null>(null);
   const { toast } = useToast();
 
-  // ✅ MOVEMOS extração de URL para useEffect que roda após montagem
+  // ✅ 1. Escutar postMessage do Chatwoot
   useEffect(() => {
-    const extractEmailFromUrl = () => {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const email = urlParams.get('agent_email');
-        if (email) {
-          setEmailFromUrl(decodeURIComponent(email));
-        }
-      } catch (e) {
-        console.warn('Não foi possível extrair email da URL:', e);
+    const handleMessage = (event: MessageEvent) => {
+      // Verifica se é um evento de contexto do Chatwoot
+      if (event.data?.event === 'appContext' || event.data?.type === 'dashboard:ready') {
+        console.log('📬 Contexto recebido do Chatwoot:', event.data);
+        setContextReceived(event.data.data || event.data);
+        setWaitingForContext(false);
       }
     };
 
-    extractEmailFromUrl();
-  }, []);
+    window.addEventListener('message', handleMessage);
+    
+    // ✅ 2. Avisar Chatwoot que estamos prontos
+    window.parent.postMessage('app:ready', '*');
 
-  useEffect(() => {
+    // ✅ 3. Detectar se estamos em iframe do Chatwoot
     const inIframe = window.self !== window.top;
     if (inIframe) {
       setIsChatwootFrame(true);
-      
-      // Se temos email na URL, tenta login automático
-      if (emailFromUrl) {
-        console.log('📧 Email encontrado na URL:', emailFromUrl);
-        performAutoLogin({ email: emailFromUrl, name: 'Agente Chatwoot' }, { id: 'chatwoot-app' });
-        return;
-      }
-
-      // Se não tem email, mostra tela de espera
       setWaitingForContext(true);
       
       // Timeout para fallback
       const timeout = setTimeout(() => {
         setWaitingForContext(false);
-      }, 8000);
+      }, 10000);
       
-      return () => clearTimeout(timeout);
+      return () => {
+        window.removeEventListener('message', handleMessage);
+        clearTimeout(timeout);
+      };
     }
-  }, [emailFromUrl]);
+  }, []);
 
-  const performAutoLogin = async (cwUser: { email: string; name: string }, cwAccount: { id: string }) => {
+  // ✅ 4. Quando contexto chega, fazer login automático
+  useEffect(() => {
+    if (contextReceived?.user?.email) {
+      performAutoLogin(
+        { 
+          email: contextReceived.user.email, 
+          name: contextReceived.user.name 
+        }, 
+        { 
+          id: contextReceived.account?.id?.toString() || 'chatwoot' 
+        }
+      );
+    }
+  }, [contextReceived]);
+
+  const performAutoLogin = async (
+    cwUser: { email: string; name: string }, 
+    cwAccount: { id: string }
+  ) => {
     console.log('🔑 === AUTO-LOGIN INICIADO ===', cwUser);
     
     const { data: session } = await supabase.auth.getSession();
@@ -105,6 +126,11 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
           <p className="text-lg font-medium">Conectando...</p>
+          {contextReceived?.user && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Como {contextReceived.user.name} ({contextReceived.user.email})
+            </p>
+          )}
         </div>
       </div>
     );
@@ -119,7 +145,7 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
           <div>
             <h2 className="text-2xl font-bold mb-2">Aguardando Chatwoot...</h2>
             <p className="text-muted-foreground mb-4">
-              Tentando login automático...
+              Procurando dados do agente...
             </p>
           </div>
 
@@ -133,13 +159,10 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
             <CardContent className="text-xs space-y-2 text-left">
               <p><strong>Para login automático:</strong></p>
               <p>1. No Chatwoot, edite seu app</p>
-              <p>2. Na URL do iframe, adicione:</p>
+              <p>2. Marque "Habilitar contexto do agente"</p>
+              <p>3. Use a URL simples:</p>
               <code className="block bg-muted p-2 rounded text-[10px]">
-                ?agent_email=&#123;&#123;user.email&#125;&#125;
-              </code>
-              <p>Exemplo:</p>
-              <code className="block bg-muted p-2 rounded text-[10px]">
-                https://flow-ai-board-d.vercel.app?agent_email=&#123;&#123;user.email&#125;&#125;
+                https://flow-ai-board-d.vercel.app
               </code>
             </CardContent>
           </Card>
