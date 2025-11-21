@@ -4,7 +4,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Bot, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useLocation } from 'react-router-dom';
+
+// ❌ REMOVIDO useLocation daqui
 
 export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -12,16 +13,23 @@ export const ChatwootAuthHandler = ({ children }: { children: React.ReactNode })
   const [waitingForContext, setWaitingForContext] = useState(false);
   const [emailFromUrl, setEmailFromUrl] = useState<string | null>(null);
   const { toast } = useToast();
-  const location = useLocation();
 
-  // Extrai email da URL (ex: ?agent_email=agente@exemplo.com)
+  // ✅ MOVEMOS extração de URL para useEffect que roda após montagem
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const email = params.get('agent_email');
-    if (email) {
-      setEmailFromUrl(decodeURIComponent(email));
-    }
-  }, [location]);
+    const extractEmailFromUrl = () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const email = urlParams.get('agent_email');
+        if (email) {
+          setEmailFromUrl(decodeURIComponent(email));
+        }
+      } catch (e) {
+        console.warn('Não foi possível extrair email da URL:', e);
+      }
+    };
+
+    extractEmailFromUrl();
+  }, []);
 
   useEffect(() => {
     const inIframe = window.self !== window.top;
