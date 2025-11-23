@@ -1,5 +1,6 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+// @ts-nocheck
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,6 +56,7 @@ serve(async (req) => {
       try {
         console.log(`Analyzing card ${card.id}...`);
         
+        // Usando a chave de serviço para autenticar a chamada interna
         const { data, error: analysisError } = await supabase.functions.invoke('analyze-conversation', {
           body: { cardId: card.id },
           headers: { Authorization: `Bearer ${supabaseKey}` }
