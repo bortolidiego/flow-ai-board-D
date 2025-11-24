@@ -1,7 +1,7 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { useChatwootContext } from '@/hooks/useChatwootContext';
 
-interface ChatwootContextType {
+export interface ChatwootContextType {
   isChatwootFrame: boolean;
   context: any;
   loading: boolean;
