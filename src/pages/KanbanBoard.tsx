@@ -18,16 +18,18 @@ import { DeletedCardsSheet } from '@/components/DeletedCardsSheet';
 import { useKanbanData } from '@/hooks/useKanbanData';
 import { useKanbanFilters } from '@/hooks/useKanbanFilters';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { Loader2, RefreshCw, CheckSquare, X, Building2 } from 'lucide-react';
+import { Loader2, RefreshCw, CheckSquare, X, Building2, MessageSquare, AlertCircle } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useChatwoot } from '@/components/ChatwootContextProvider';
 
 const KanbanBoard = () => {
   const { workspace, loading: workspaceLoading } = useWorkspace();
@@ -68,6 +70,35 @@ const KanbanBoard = () => {
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  
+  // Usar contexto do Chatwoot
+  const { isChatwootFrame, context, conversationId, agentName } = useChatwoot();
+  const [autoFilterApplied, setAutoFilterApplied] = useState(false);
+
+  // Aplicar filtro automático quando contexto do Chatwoot estiver disponível
+  useEffect(() => {
+    if (isChatwootFrame && conversationId && !autoFilterApplied) {
+      console.log('🎯 Aplicando filtro automático para conversa:', conversationId);
+      
+      // Filtrar cards pela conversa ativa
+      updateFilter('chatwootConversationId', [conversationId.toString()]);
+      setAutoFilterApplied(true);
+      
+      // Se houver apenas um card para esta conversa, abrir automaticamente
+      const conversationCards = cards.filter(card => 
+        card.chatwootConversationId === conversationId.toString()
+      );
+      
+      console.log(`📊 Cards encontrados para conversa ${conversationId}:`, conversationCards.length);
+      
+      if (conversationCards.length === 1) {
+        console.log('✅ Abrindo card automaticamente:', conversationCards[0].id);
+        setSelectedCardId(conversationCards[0].id);
+      } else if (conversationCards.length === 0) {
+        console.warn('⚠️ Nenhum card encontrado para esta conversa');
+      }
+    }
+  }, [isChatwootFrame, conversationId, autoFilterApplied, cards, updateFilter]);
 
   const handleReanalyzeAll = async () => {
     if (!pipeline) {
@@ -159,12 +190,10 @@ const KanbanBoard = () => {
     });
   };
 
-  // CORREÇÃO: Usa filteredCards em vez de cards (todos)
   const selectAllCards = () => {
     setSelectedCardIds(new Set(filteredCards.map(c => c.id)));
   };
 
-  // CORREÇÃO: Filtra usando filteredCards para respeitar filtros ativos na coluna
   const selectColumnCards = (columnId: string) => {
     const columnCards = filteredCards.filter(c => c.columnId === columnId);
     setSelectedCardIds(prev => {
@@ -201,7 +230,6 @@ const KanbanBoard = () => {
       setSelectionMode(false);
       refreshCards();
 
-      // Show Toast with Undo Action
       toast({
         title: "Cards movidos para lixeira",
         description: `${idsToDelete.length} cards foram removidos.`,
@@ -284,11 +312,16 @@ const KanbanBoard = () => {
                       {workspace.name}
                     </Badge>
                   )}
+                  {isChatwootFrame && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      Chatwoot
+                    </Badge>
+                  )}
                 </div>
                 <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-xs")}>Gestão visual de leads e oportunidades</p>
               </div>
               
-              {/* Lixeira no Mobile (canto direito) */}
               {isMobile && pipeline && (
                 <DeletedCardsSheet 
                   pipelineId={pipeline.id}
@@ -336,7 +369,7 @@ const KanbanBoard = () => {
                     className={cn("gap-2", isMobile && "w-full")}
                   >
                     <RefreshCw className={cn(isMobile ? "w-5 h-5" : "w-4 h-4", reanalyzing && 'animate-spin')} />
-                    {reanalyzing ? (isMobile ? 'Reanalisando...' : 'Reanalisando...') : 'Reanalisar'}
+                    {reanalyzing ? (isMobile ? 'Reanalisando...' : 'Reanalisar') : 'Reanalisar'}
                   </Button>
                   {reanalysisProgress && !isMobile && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -431,18 +464,53 @@ const KanbanBoard = () => {
               />
             </div>
           )}
+          
+          {/* Indicador de contexto do Chatwoot - MELHORADO */}
+          {isChatwootFrame && (
+            <Alert className="mt-2">
+              <MessageSquare className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">
+                      {context ? '✅ Conectado ao Chatwoot' : '⚠️ Aguardando contexto do Chatwoot'}
+                    </p>
+                    {context && (
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        {agentName && <span>Agente: <strong>{agentName}</strong></span>}
+                        {conversationId && <span>Conversa: <strong>#{conversationId}</strong></span>}
+                        {filteredCards.length > 0 && (
+                          <span className="text-primary font-medium">
+                            {filteredCards.length} card(s) desta conversa
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {!context && (
+                      <p className="text-xs text-muted-foreground">
+                        Verifique o console (F12) para logs de debug
+                      </p>
+                    )}
+                  </div>
+                  {!context && (
+                    <AlertCircle className="h-5 w-5 text-yellow-500 animate-pulse" />
+                  )}
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
       </div>
 
-      {/* Kanban Board Area - ÚNICO SCROLL DA PÁGINA */}
+      {/* Kanban Board Area */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className={cn(
-          "flex-1 overflow-auto", // Este é o container de scroll principal (X e Y)
+          "flex-1 overflow-auto",
           isMobile ? "px-3 pb-20 pt-4" : "px-6 pb-6 pt-4"
         )}>
           <div className="inline-flex min-w-full justify-center items-start">
             <div className={cn(
                 "flex gap-4",
-                isMobile && "flex-col w-full" // Mobile: Pilha vertical
+                isMobile && "flex-col w-full"
             )}>
               {pipeline?.columns.map((column) => {
                 const columnCards = getColumnCards(column.id);
