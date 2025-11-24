@@ -16,6 +16,7 @@ import Profile from '@/pages/Profile';
 import Auth from '@/pages/Auth';
 import AcceptInvite from '@/pages/AcceptInvite';
 import UpdatePassword from '@/pages/UpdatePassword';
+import ChatwootSetup from '@/pages/ChatwootSetup';
 import NotFound from '@/pages/NotFound';
 
 function App() {
@@ -87,6 +88,18 @@ function App() {
                     <ProvisionGate>
                       <AppLayout>
                         <Profile />
+                      </AppLayout>
+                    </ProvisionGate>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/chatwoot-setup"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <ProvisionGate>
+                      <AppLayout>
+                        <ChatwootSetup />
                       </AppLayout>
                     </ProvisionGate>
                   </ProtectedRoute>

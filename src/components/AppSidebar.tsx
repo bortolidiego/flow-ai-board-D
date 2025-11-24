@@ -1,4 +1,4 @@
-import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText, User } from "lucide-react";
+import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText, User, Settings } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -28,6 +28,12 @@ const menuItems = [
     title: "Brain",
     url: "/brain",
     icon: Brain as any,
+    requireAdmin: true,
+  },
+  {
+    title: "Chatwoot Setup",
+    url: "/chatwoot-setup",
+    icon: Settings,
     requireAdmin: true,
   },
   {

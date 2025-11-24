@@ -22,6 +22,18 @@ export const useBreadcrumbs = (): BreadcrumbItem[] => {
       { label: 'Brain', href: '/brain' },
       { label: 'Novo Pipeline' },
     ],
+    '/chatwoot-setup': [
+      { label: 'Home', href: '/' },
+      { label: 'Configuração Chatwoot' },
+    ],
+    '/changelog': [
+      { label: 'Home', href: '/' },
+      { label: 'Changelog' },
+    ],
+    '/profile': [
+      { label: 'Home', href: '/' },
+      { label: 'Perfil' },
+    ],
   };
 
   return breadcrumbMap[pathname] || [{ label: 'Home', href: '/' }];
