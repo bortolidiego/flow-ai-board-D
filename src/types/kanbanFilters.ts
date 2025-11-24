@@ -24,6 +24,7 @@ export interface KanbanFilters {
   
   // Filtros do Chatwoot
   chatwootConversationId: string[]; // IDs das conversas do Chatwoot
+  customerProfileId: string[]; // IDs dos perfis de cliente do Chatwoot
   
   // Flags Booleanas
   isMonetaryLocked: boolean | null;

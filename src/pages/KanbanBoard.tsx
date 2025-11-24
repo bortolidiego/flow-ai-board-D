@@ -18,7 +18,7 @@ import { DeletedCardsSheet } from '@/components/DeletedCardsSheet';
 import { useKanbanData } from '@/hooks/useKanbanData';
 import { useKanbanFilters } from '@/hooks/useKanbanFilters';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { Loader2, RefreshCw, CheckSquare, X, Building2, MessageSquare, AlertCircle } from 'lucide-react';
+import { Loader2, RefreshCw, CheckSquare, X, Building2, MessageSquare, AlertCircle, User } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -72,33 +72,99 @@ const KanbanBoard = () => {
   const isMobile = useIsMobile();
   
   // Usar contexto do Chatwoot
-  const { isChatwootFrame, context, conversationId, agentName } = useChatwoot();
+  const { 
+    isChatwootFrame, 
+    context, 
+    appType, 
+    conversationId, 
+    contactId, 
+    contactEmail, 
+    contactPhone,
+    contactName, // Adicionado aqui
+    agentName 
+  } = useChatwoot();
   const [autoFilterApplied, setAutoFilterApplied] = useState(false);
+  const [customerProfileIdFromChatwoot, setCustomerProfileIdFromChatwoot] = useState<string | null>(null);
+
+  // Função para buscar customer_profile_id se não vier direto do Chatwoot
+  const fetchCustomerProfileId = async (email?: string, phone?: string): Promise<string | null> => {
+    if (!email && !phone) return null;
+
+    let query = supabase.from('customer_profiles').select('id');
+
+    if (email) {
+      query = query.eq('email', email);
+    } else if (phone) {
+      query = query.eq('phone', phone);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      console.error('Error fetching customer profile by email/phone:', error);
+      return null;
+    }
+    return data?.id || null;
+  };
 
   // Aplicar filtro automático quando contexto do Chatwoot estiver disponível
   useEffect(() => {
-    if (isChatwootFrame && conversationId && !autoFilterApplied) {
-      console.log('🎯 Aplicando filtro automático para conversa:', conversationId);
+    const applyChatwootFilters = async () => {
+      if (!isChatwootFrame || autoFilterApplied || !context) return;
+
+      console.log('🎯 Aplicando filtro automático para contexto Chatwoot:', appType);
       
-      // Filtrar cards pela conversa ativa
-      updateFilter('chatwootConversationId', [conversationId.toString()]);
-      setAutoFilterApplied(true);
-      
-      // Se houver apenas um card para esta conversa, abrir automaticamente
-      const conversationCards = cards.filter(card => 
-        card.chatwootConversationId === conversationId.toString()
-      );
-      
-      console.log(`📊 Cards encontrados para conversa ${conversationId}:`, conversationCards.length);
-      
-      if (conversationCards.length === 1) {
-        console.log('✅ Abrindo card automaticamente:', conversationCards[0].id);
-        setSelectedCardId(conversationCards[0].id);
-      } else if (conversationCards.length === 0) {
-        console.warn('⚠️ Nenhum card encontrado para esta conversa');
+      // Resetar filtros antes de aplicar o novo
+      resetFilters();
+
+      if (appType === 'conversation_sidebar' && conversationId) {
+        console.log('✅ Filtrando por Conversation ID:', conversationId);
+        updateFilter('chatwootConversationId', [conversationId.toString()]);
+        
+        const conversationCards = cards.filter(card => 
+          card.chatwootConversationId === conversationId.toString()
+        );
+        if (conversationCards.length === 1) {
+          setSelectedCardId(conversationCards[0].id);
+        }
+      } else if (appType === 'contact_sidebar') {
+        let profileIdToFilter: string | null = null;
+
+        if (contactId) {
+          profileIdToFilter = contactId.toString();
+          console.log('✅ Filtrando por Contact ID (direto):', contactId);
+        } else if (contactEmail || contactPhone) {
+          console.log('🔍 Buscando Customer Profile ID por email/telefone...');
+          profileIdToFilter = await fetchCustomerProfileId(contactEmail, contactPhone);
+          if (profileIdToFilter) {
+            console.log('✅ Customer Profile ID encontrado:', profileIdToFilter);
+          } else {
+            console.warn('⚠️ Nenhum Customer Profile ID encontrado para o contato.');
+          }
+        }
+
+        if (profileIdToFilter) {
+          setCustomerProfileIdFromChatwoot(profileIdToFilter);
+          updateFilter('customerProfileId', [profileIdToFilter]);
+          
+          const contactCards = cards.filter(card => 
+            card.customerProfileId === profileIdToFilter
+          );
+          if (contactCards.length === 1) {
+            setSelectedCardId(contactCards[0].id);
+          }
+        } else {
+          console.warn('⚠️ Não foi possível aplicar filtro de contato: ID, email ou telefone ausentes.');
+        }
+      } else {
+        console.log('ℹ️ Nenhum filtro específico do Chatwoot aplicado (Dashboard App ou contexto incompleto).');
       }
-    }
-  }, [isChatwootFrame, conversationId, autoFilterApplied, cards, updateFilter]);
+      
+      setAutoFilterApplied(true);
+    };
+
+    applyChatwootFilters();
+  }, [isChatwootFrame, context, appType, conversationId, contactId, contactEmail, contactPhone, autoFilterApplied, cards, updateFilter, resetFilters]);
 
   const handleReanalyzeAll = async () => {
     if (!pipeline) {
@@ -478,10 +544,13 @@ const KanbanBoard = () => {
                     {context && (
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         {agentName && <span>Agente: <strong>{agentName}</strong></span>}
-                        {conversationId && <span>Conversa: <strong>#{conversationId}</strong></span>}
+                        {appType === 'conversation_sidebar' && conversationId && <span>Conversa: <strong>#{conversationId}</strong></span>}
+                        {appType === 'contact_sidebar' && (contactName || contactEmail || contactPhone) && (
+                          <span>Contato: <strong>{contactName || contactEmail || contactPhone}</strong></span>
+                        )}
                         {filteredCards.length > 0 && (
                           <span className="text-primary font-medium">
-                            {filteredCards.length} card(s) desta conversa
+                            {filteredCards.length} card(s) {appType === 'conversation_sidebar' ? 'desta conversa' : 'deste contato'}
                           </span>
                         )}
                       </div>

@@ -5,10 +5,14 @@ interface ChatwootContextType {
   isChatwootFrame: boolean;
   context: any;
   loading: boolean;
+  appType: 'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null;
   agentName: string | undefined;
   agentEmail: string | undefined;
   conversationId: number | undefined;
   contactId: number | undefined;
+  contactEmail: string | undefined;
+  contactName: string | undefined;
+  contactPhone: string | undefined;
 }
 
 const ChatwootContext = createContext<ChatwootContextType | undefined>(undefined);

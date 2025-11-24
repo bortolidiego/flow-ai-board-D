@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ChatwootContextType } from '@/components/ChatwootContextProvider'; // Import the type
 
 interface ChatwootUser {
   id: number;
@@ -27,10 +28,11 @@ interface ChatwootContextData {
   };
 }
 
-export const useChatwootContext = () => {
+export const useChatwootContext = (): ChatwootContextType => { // Explicitly define return type
   const [context, setContext] = useState<ChatwootContextData | null>(null);
   const [isChatwootFrame, setIsChatwootFrame] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [appType, setAppType] = useState<'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null>(null);
 
   useEffect(() => {
     // Verificar se estamos em um iframe
@@ -84,12 +86,35 @@ export const useChatwootContext = () => {
       if (payload?.event === 'push.event' && payload?.data) {
         console.log('✅ Contexto completo recebido do Chatwoot:', payload.data);
         
+        const chatwootData = payload.data;
         setContext({
-          user: payload.data.user,
-          account: payload.data.account,
-          conversation: payload.data.conversation,
-          contact: payload.data.contact,
+          user: chatwootData.user,
+          account: chatwootData.account,
+          conversation: chatwootData.conversation,
+          contact: chatwootData.contact,
         });
+
+        // Determinar o tipo de app baseado nos dados recebidos
+        if (chatwootData.conversation && chatwootData.contact) {
+          // Se temos conversa E contato, pode ser dashboard ou conversation sidebar
+          // Verificar se estamos em uma conversa específica
+          if (chatwootData.conversation.id) {
+            setAppType('conversation_sidebar');
+            console.log('🎯 Detectado: Conversation Sidebar (barra lateral da conversa)');
+          } else {
+            setAppType('contact_sidebar');
+            console.log('🎯 Detectado: Contact Sidebar (aba do contato)');
+          }
+        } else if (chatwootData.contact && !chatwootData.conversation) {
+          setAppType('contact_sidebar');
+          console.log('🎯 Detectado: Contact Sidebar (aba do contato)');
+        } else if (chatwootData.conversation && !chatwootData.contact) {
+          setAppType('conversation_sidebar');
+          console.log('🎯 Detectado: Conversation Sidebar (barra lateral da conversa)');
+        } else {
+          setAppType('dashboard');
+          console.log('🎯 Detectado: Dashboard App (página principal)');
+        }
         
         setLoading(false);
       }
@@ -145,6 +170,7 @@ export const useChatwootContext = () => {
             email: 'cliente@teste.com'
           }
         });
+        setAppType('conversation_sidebar'); // Default para teste
         
         setLoading(false);
       }
@@ -160,9 +186,13 @@ export const useChatwootContext = () => {
     isChatwootFrame,
     context,
     loading,
+    appType,
     agentName: context?.user?.name,
     agentEmail: context?.user?.email,
     conversationId: context?.conversation?.id,
-    contactId: context?.contact?.id
+    contactId: context?.contact?.id,
+    contactEmail: context?.contact?.email,
+    contactName: context?.contact?.name,
+    contactPhone: context?.contact?.phone_number,
   };
 };

@@ -19,7 +19,8 @@ const defaultFilters: KanbanFilters = {
   resolutionStatus: [],
   inactivityDays: null,
   dateRange: { start: null, end: null },
-  chatwootConversationId: [], // Adicionando campo faltante
+  chatwootConversationId: [],
+  customerProfileId: [], // Adicionando campo faltante
   isMonetaryLocked: null,
   isUnassigned: null,
   isReturningCustomer: null,
@@ -208,6 +209,13 @@ export const useKanbanFilters = (cards: Card[]) => {
       );
     }
 
+    // 12. Customer Profile ID
+    if (filters.customerProfileId.length > 0) {
+      result = result.filter(card => 
+        card.customerProfileId && filters.customerProfileId.includes(card.customerProfileId)
+      );
+    }
+
     // Sorting logic... (mantida igual)
     result.sort((a, b) => {
       switch (sortBy) {
@@ -238,7 +246,8 @@ export const useKanbanFilters = (cards: Card[]) => {
     if (filters.isUnassigned) count++;
     if (filters.isReturningCustomer) count++;
     if (filters.inactivityDays) count++;
-    if (filters.chatwootConversationId.length) count++; // Adicionando contador para novo filtro
+    if (filters.chatwootConversationId.length) count++;
+    if (filters.customerProfileId.length) count++; // Adicionando contador para novo filtro
     count += Object.keys(filters.customFields).length;
     return count;
   }, [filters]);

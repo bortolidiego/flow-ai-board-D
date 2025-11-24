@@ -56,7 +56,7 @@ interface KanbanCardProps {
   completionReason?: string | null;
   completedAt?: string | null;
   completedBy?: string | null;
-  customerProfileId?: string | null;
+  customerProfileId?: string | null; // Adicionado customerProfileId
   currentLifecycleStage?: string | null;
   lifecycleProgressPercent?: number;
   resolutionStatus?: string | null;
@@ -96,7 +96,7 @@ export const KanbanCard = ({
   completionReason,
   completedAt,
   completedBy,
-  customerProfileId,
+  customerProfileId, // Usado aqui
   currentLifecycleStage,
   lifecycleProgressPercent,
   resolutionStatus,

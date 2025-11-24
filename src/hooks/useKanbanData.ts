@@ -31,7 +31,7 @@ export interface Card {
   completionReason?: string | null;
   completedAt?: string | null;
   completedBy?: string | null;
-  customerProfileId?: string | null;
+  customerProfileId?: string | null; // Adicionado customerProfileId
   currentLifecycleStage?: string | null;
   lifecycleProgressPercent?: number;
   resolutionStatus?: string | null;
@@ -235,7 +235,7 @@ export const useKanbanData = (workspaceId?: string) => {
         completionReason: card.completion_reason,
         completedAt: card.completed_at,
         completedBy: card.completed_by,
-        customerProfileId: card.customer_profile_id,
+        customerProfileId: card.customer_profile_id, // Incluído customer_profile_id
         currentLifecycleStage: card.current_lifecycle_stage,
         lifecycleProgressPercent: card.lifecycle_progress_percent,
         resolutionStatus: card.resolution_status,
