@@ -45,117 +45,58 @@ export const useChatwootContext = () => {
     console.log('🎯 App detectado dentro de iframe - Iniciando comunicação com Chatwoot');
 
     const handleMessage = (event: MessageEvent) => {
-      // Log de todas as mensagens recebidas para debug
-      console.log('📨 Mensagem recebida:', event.data);
+      // Aceitar apenas mensagens do parent (Chatwoot)
+      if (event.source !== window.parent) return;
 
-      // Aceitar mensagens do Chatwoot em diferentes formatos
-      if (!event.data) return;
-
-      let payload;
+      const data = event.data;
       
-      // Tentar parsear se for string
-      if (typeof event.data === 'string') {
-        try {
-          payload = JSON.parse(event.data);
-        } catch {
-          // Se não for JSON válido, ignorar
-          return;
-        }
-      } else {
-        payload = event.data;
+      // Log apenas de mensagens relevantes
+      if (data && typeof data === 'object' && data.event) {
+        console.log('📨 Evento Chatwoot recebido:', data.event, data);
       }
 
-      // Processar eventos do Chatwoot
-      if (payload.event) {
-        console.log('🎯 Evento Chatwoot:', payload.event, payload);
+      // O Chatwoot envia o contexto no formato: { event: 'push.event', data: {...} }
+      if (data?.event === 'push.event' && data?.data) {
+        console.log('✅ Contexto completo recebido do Chatwoot:', data.data);
         
-        switch (payload.event) {
-          case 'push.event':
-            // Chatwoot envia contexto via push.event
-            if (payload.data) {
-              console.log('📦 Contexto recebido via push.event:', payload.data);
-              setContext(prev => ({
-                ...prev,
-                ...payload.data
-              }));
-            }
-            break;
-            
-          case 'chatwoot:ready':
-            console.log('✅ Chatwoot está pronto');
-            break;
-            
-          case 'chatwoot:user:set':
-            console.log('👤 Usuário definido:', payload.data);
-            setContext(prev => ({
-              ...prev,
-              user: payload.data
-            }));
-            break;
-            
-          case 'chatwoot:conversation:started':
-          case 'chatwoot:conversation:loaded':
-          case 'chatwoot:conversation:selected':
-            console.log('💬 Conversa carregada:', payload.data);
-            setContext(prev => ({
-              ...prev,
-              conversation: payload.data
-            }));
-            break;
-            
-          case 'chatwoot:contact:set':
-            console.log('📇 Contato definido:', payload.data);
-            setContext(prev => ({
-              ...prev,
-              contact: payload.data
-            }));
-            break;
-        }
+        setContext({
+          user: data.data.user,
+          account: data.data.account,
+          conversation: data.data.conversation,
+          contact: data.data.contact,
+        });
+        
+        setLoading(false);
       }
     };
 
     window.addEventListener('message', handleMessage);
 
-    // Enviar mensagem de "ready" para o Chatwoot
-    const sendReady = () => {
-      console.log('📤 Enviando mensagem de ready para o Chatwoot');
+    // Enviar sinal de "ready" para o Chatwoot
+    const notifyReady = () => {
+      console.log('📤 Notificando Chatwoot que o app está pronto');
       
-      // Tentar diferentes formatos de mensagem
-      window.parent.postMessage({ event: 'chatwoot:ready' }, '*');
-      window.parent.postMessage('chatwoot-dashboard-app:ready', '*');
-      
-      // Solicitar contexto
-      setTimeout(() => {
-        console.log('📤 Solicitando contexto ao Chatwoot');
-        window.parent.postMessage({ event: 'chatwoot:request-context' }, '*');
-      }, 500);
+      // Formato correto para Dashboard Apps do Chatwoot
+      window.parent.postMessage(
+        JSON.stringify({ event: 'chatwoot-dashboard-app:ready' }),
+        '*'
+      );
     };
 
-    // Enviar ready imediatamente e depois periodicamente até receber contexto
-    sendReady();
+    // Enviar ready após um pequeno delay para garantir que o Chatwoot está escutando
+    setTimeout(notifyReady, 100);
     
-    const readyInterval = setInterval(() => {
-      if (!context?.conversation) {
-        console.log('⏰ Reenviando ready (ainda sem contexto)');
-        sendReady();
-      } else {
-        console.log('✅ Contexto recebido, parando envio de ready');
-        clearInterval(readyInterval);
-      }
-    }, 2000);
-
-    // Timeout para parar de tentar após 30 segundos
+    // Timeout de segurança: se após 10s não receber contexto, parar de carregar
     const timeout = setTimeout(() => {
-      clearInterval(readyInterval);
-      console.warn('⚠️ Timeout: Não foi possível receber contexto do Chatwoot após 30s');
-      setLoading(false);
-    }, 30000);
-
-    setLoading(false);
+      if (!context) {
+        console.warn('⚠️ Timeout: Contexto do Chatwoot não recebido após 10s');
+        console.warn('⚠️ Verifique se o Dashboard App foi configurado corretamente no Chatwoot');
+        setLoading(false);
+      }
+    }, 10000);
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      clearInterval(readyInterval);
       clearTimeout(timeout);
     };
   }, []);
