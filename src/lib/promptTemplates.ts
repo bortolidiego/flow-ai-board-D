@@ -368,9 +368,9 @@ export const OBJECTIVE_LABELS: Record<string, string> = {
   identify_service_needs: 'Identificar necessidades de serviço',
   identify_property_interests: 'Identificar interesse imobiliário',
   identify_course_interests: 'Identificar interesse em cursos',
-  detect_urgency: 'Avaliar o nível de urgência da solicitação',
-  assess_student_profile: 'Entender perfil e necessidades educacionais do aluno',
-  evaluate_resolution: 'Verificar se o problema foi resolvido satisfatoriamente'
+  detect_urgency: 'Detectar urgência',
+  assess_student_profile: 'Avaliar perfil do aluno',
+  evaluate_resolution: 'Avaliar resolução'
 };
 
 export const OBJECTIVE_DESCRIPTIONS: Record<string, string> = {
@@ -391,12 +391,27 @@ export const OBJECTIVE_DESCRIPTIONS: Record<string, string> = {
 };
 
 export const AI_MODELS = [
+  {
+    id: 'google/gemini-2.5-flash-lite',
+    name: 'Gemini 2.5 Flash Lite',
+    description: 'Mais rápido e econômico - Ideal para classificação e resumos',
+    recommended: true
+  },
+  {
+    id: 'google/gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    description: 'Equilibrado - Boa performance e custo'
+  },
+  {
+    id: 'google/gemini-2.5-pro',
+    name: 'Gemini 2.5 Pro',
+    description: 'Mais poderoso - Melhor para análises complexas'
+  },
   // OpenAI models
   {
     id: 'openai/gpt-4o-mini',
     name: 'OpenAI GPT-4o Mini',
-    description: 'Rápido e acessível - ótimo para classificação e extração de dados',
-    recommended: true
+    description: 'Rápido e acessível - ótimo para classificação e extração de dados'
   },
   {
     id: 'openai/gpt-4o',

@@ -4,89 +4,48 @@ interface ChatwootUser {
   id: number;
   name: string;
   email: string;
-  avatar_url?: string;
 }
 
 interface ChatwootContextData {
   user?: ChatwootUser;
-  account?: {
-    id: number;
-    name: string;
-  };
-  conversation?: {
-    id: number;
-    contact_id: number;
-    status: string;
-    inbox_id: number;
-  };
-  contact?: {
-    id: number;
-    name: string;
-    email: string;
-    phone_number?: string;
-  };
+  account?: any;
+  conversation?: any;
 }
 
 export const useChatwootContext = () => {
   const [context, setContext] = useState<ChatwootContextData | null>(null);
-  const [isChatwootFrame, setIsChatwootFrame] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [isChatwoot, setIsChatwoot] = useState(false);
 
   useEffect(() => {
+    // Função para lidar com mensagens vindas do pai (Chatwoot)
     const handleMessage = (event: MessageEvent) => {
-      // Verificar se é uma mensagem do Chatwoot
-      if (event.data && typeof event.data === 'string' && event.data.startsWith('chatwoot-widget:')) {
-        try {
-          const payload = JSON.parse(event.data.replace('chatwoot-widget:', ''));
-          
-          console.log('📬 Chatwoot postMessage recebido:', payload);
-          
-          switch (payload.event) {
-            case 'chatwoot:ready':
-              // Solicitar contexto inicial
-              window.parent.postMessage('chatwoot-widget:{ "event": "request-context" }', '*');
-              break;
-              
-            case 'chatwoot:user:set':
-              setContext(prev => ({
-                ...prev,
-                user: payload.data
-              }));
-              break;
-              
-            case 'chatwoot:conversation:started':
-            case 'chatwoot:conversation:loaded':
-              setContext(prev => ({
-                ...prev,
-                conversation: payload.data
-              }));
-              break;
-              
-            case 'chatwoot:contact:set':
-              setContext(prev => ({
-                ...prev,
-                contact: payload.data
-              }));
-              break;
-          }
-        } catch (e) {
-          console.warn('Erro ao parsear mensagem do Chatwoot:', e);
+      // Verifica se é um evento de contexto do Chatwoot
+      // O formato exato pode variar dependendo da versão, mas geralmente vem em data
+      const eventData = event.data;
+
+      // Log para debug (ajuda a ver o que o Chatwoot está mandando)
+      if (eventData && (eventData.event === 'appContext' || eventData.type === 'dashboard:ready')) {
+        console.log('Chatwoot Context Received:', eventData);
+        setIsChatwoot(true);
+        
+        if (eventData.data) {
+          setContext(eventData.data);
         }
       }
     };
 
     window.addEventListener('message', handleMessage);
 
-    // Verificar se estamos em um iframe
+    // Tenta avisar o pai que estamos prontos (algumas versões requerem handshake)
+    window.parent.postMessage('app:ready', '*');
+
+    // Check se está em iframe
     const inIframe = window.self !== window.top;
-    setIsChatwootFrame(inIframe);
-    
     if (inIframe) {
-      // Enviar mensagem para solicitar contexto
-      window.parent.postMessage('chatwoot-widget:{ "event": "request-context" }', '*');
+        // As vezes o postMessage demora, podemos assumir chatwoot se estivermos em iframe
+        // e aguardar os dados
+        // setIsChatwoot(true); 
     }
-    
-    setLoading(false);
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -94,12 +53,9 @@ export const useChatwootContext = () => {
   }, []);
 
   return {
-    isChatwootFrame,
-    context,
-    loading,
+    isChatwoot,
     agentName: context?.user?.name,
     agentEmail: context?.user?.email,
-    conversationId: context?.conversation?.id,
-    contactId: context?.contact?.id
+    context
   };
 };

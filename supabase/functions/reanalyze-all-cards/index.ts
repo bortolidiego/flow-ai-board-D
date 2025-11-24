@@ -121,7 +121,6 @@ serve(async (req) => {
         try {
           console.log(`Reanalyzing card ${card.id} (${i + batch.indexOf(card) + 1}/${cardsToAnalyze.length})...`);
 
-          // Passando o token do usuário para a função de análise
           const { data, error: analysisError } = await supabase.functions.invoke('analyze-conversation', {
             body: { cardId: card.id },
             headers: { Authorization: `Bearer ${token}` },

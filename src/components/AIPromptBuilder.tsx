@@ -34,9 +34,6 @@ const ICON_MAP: Record<string, any> = {
   ShoppingCart, Briefcase, Home, Heart, GraduationCap, Headphones, Settings
 };
 
-// Modelo padrão após a remoção do Gemini
-const DEFAULT_MODEL = 'openai/gpt-4o-mini';
-
 export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPromptBuilderProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -46,7 +43,7 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
     use_custom_prompt: false
   });
   const [customPrompt, setCustomPrompt] = useState('');
-  const [modelName, setModelName] = useState(DEFAULT_MODEL);
+  const [modelName, setModelName] = useState('google/gemini-2.5-flash');
   const [analyzeOnMessage, setAnalyzeOnMessage] = useState(true);
   const [analyzeOnClose, setAnalyzeOnClose] = useState(true);
 
@@ -72,12 +69,7 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
           use_custom_prompt: data.use_custom_prompt || false
         });
         setCustomPrompt(data.custom_prompt || '');
-        
-        // Garante que o modelo carregado é um dos modelos válidos (OpenAI)
-        const loadedModel = data.model_name || DEFAULT_MODEL;
-        const isValidModel = AI_MODELS.some(m => m.id === loadedModel);
-        setModelName(isValidModel ? loadedModel : DEFAULT_MODEL);
-        
+        setModelName(data.model_name || 'google/gemini-2.5-flash');
         setAnalyzeOnMessage(data.analyze_on_message ?? true);
         setAnalyzeOnClose(data.analyze_on_close ?? true);
       } else {
@@ -103,7 +95,7 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
           business_type: 'custom',
           objectives: [],
           generated_prompt: generatedPrompt,
-          model_name: DEFAULT_MODEL,
+          model_name: 'google/gemini-2.5-flash',
           analyze_on_message: true,
           analyze_on_close: true
         });
