@@ -17,7 +17,6 @@ import Auth from '@/pages/Auth';
 import AcceptInvite from '@/pages/AcceptInvite';
 import UpdatePassword from '@/pages/UpdatePassword';
 import ChatwootSetup from '@/pages/ChatwootSetup';
-import ChatwootSidebar from '@/pages/ChatwootSidebar';
 import NotFound from '@/pages/NotFound';
 
 function App() {
@@ -32,9 +31,6 @@ function App() {
               <Route path="/accept-invite" element={<AcceptInvite />} />
               <Route path="/update-password" element={<UpdatePassword />} />
               <Route path="/provision" element={<ProvisionGate><AppLayout><KanbanBoard /></AppLayout></ProvisionGate>} />
-
-              {/* Rota Chatwoot Sidebar (Standalone) */}
-              <Route path="/chatwoot-sidebar" element={<ChatwootSidebar />} />
 
               {/* Rotas Protegidas */}
               <Route
