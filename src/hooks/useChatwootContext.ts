@@ -38,7 +38,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     // Verificar se estamos em um iframe
     const inIframe = window.self !== window.top;
     setIsChatwootFrame(inIframe);
-    
+
     if (!inIframe) {
       console.log('ℹ️ App rodando fora de iframe (modo standalone)');
       setLoading(false);
@@ -53,7 +53,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
 
     const handleMessage = (event: MessageEvent) => {
       messageCount++;
-      
+
       // Log TODAS as mensagens para debug (mesmo de outras origens)
       console.log(`📨 Mensagem #${messageCount} recebida:`, {
         origin: event.origin,
@@ -69,7 +69,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
       }
 
       const data = event.data;
-      
+
       // Tentar parsear se for string
       let payload = data;
       if (typeof data === 'string') {
@@ -82,10 +82,10 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
         }
       }
 
-      // O Chatwoot envia o contexto no formato: { event: 'push.event', data: {...} }
+      // Formato 1: { event: 'push.event', data: {...} }
       if (payload?.event === 'push.event' && payload?.data) {
-        console.log('✅ Contexto completo recebido do Chatwoot:', payload.data);
-        
+        console.log('✅ Contexto completo recebido do Chatwoot (formato push.event):', payload.data);
+
         const chatwootData = payload.data;
         setContext({
           user: chatwootData.user,
@@ -115,8 +115,43 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
           setAppType('dashboard');
           console.log('🎯 Detectado: Dashboard App (página principal)');
         }
-        
+
         setLoading(false);
+      }
+      // Formato 2: Direto com user, account, conversation, contact
+      else if (payload?.user || payload?.account || payload?.conversation || payload?.contact) {
+        console.log('✅ Contexto completo recebido do Chatwoot (formato direto):', payload);
+
+        setContext({
+          user: payload.user,
+          account: payload.account,
+          conversation: payload.conversation,
+          contact: payload.contact,
+        });
+
+        // Determinar o tipo de app
+        if (payload.conversation && payload.contact) {
+          if (payload.conversation.id) {
+            setAppType('conversation_sidebar');
+            console.log('🎯 Detectado: Conversation Sidebar');
+          } else {
+            setAppType('contact_sidebar');
+            console.log('🎯 Detectado: Contact Sidebar');
+          }
+        } else if (payload.contact && !payload.conversation) {
+          setAppType('contact_sidebar');
+          console.log('🎯 Detectado: Contact Sidebar');
+        } else if (payload.conversation && !payload.contact) {
+          setAppType('conversation_sidebar');
+          console.log('🎯 Detectado: Conversation Sidebar');
+        } else {
+          setAppType('dashboard');
+          console.log('🎯 Detectado: Dashboard App');
+        }
+
+        setLoading(false);
+      } else {
+        console.log('⚠️ Mensagem recebida mas não contém contexto esperado:', payload);
       }
     };
 
@@ -125,56 +160,32 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     // Enviar sinal de "ready" para o Chatwoot
     const notifyReady = () => {
       console.log('📤 Notificando Chatwoot que o app está pronto');
-      
+
       // Formato correto para Dashboard Apps do Chatwoot
       window.parent.postMessage(
         JSON.stringify({ event: 'chatwoot-dashboard-app:ready' }),
         '*'
       );
-      
+
       console.log('📤 Mensagem enviada para parent com evento: chatwoot-dashboard-app:ready');
     };
 
     // Enviar ready após um pequeno delay para garantir que o Chatwoot está escutando
     setTimeout(notifyReady, 100);
-    
-    // Timeout de segurança: se após 10s não receber contexto, parar de carregar
+
+    // Timeout de segurança: se após 3s não receber contexto, mostrar erro
     const timeout = setTimeout(() => {
       if (!context) {
-        console.warn('⚠️ Timeout: Contexto do Chatwoot não recebido após 10s');
-        console.warn(`⚠️ Total de mensagens recebidas: ${messageCount}`);
-        console.warn('⚠️ Verifique se o Dashboard App foi configurado corretamente no Chatwoot');
-        console.warn('⚠️ Verifique também se há erros de CORS no console do Chatwoot');
-        
-        // Modo de teste: usar dados mock se não receber contexto
-        console.log('🧪 Ativando modo de teste com dados mock');
-        setContext({
-          user: {
-            id: 1,
-            name: 'Diego Bortoli (Teste)',
-            email: 'diego.bortoli@kbtech.com.br'
-          },
-          account: {
-            id: 1,
-            name: 'KB Tech (Teste)'
-          },
-          conversation: {
-            id: 999,
-            contact_id: 1,
-            status: 'open',
-            inbox_id: 1
-          },
-          contact: {
-            id: 1,
-            name: 'Cliente Teste',
-            email: 'cliente@teste.com'
-          }
-        });
-        setAppType('conversation_sidebar'); // Default para teste
-        
+        console.error('❌ Timeout: Contexto do Chatwoot não recebido após 3s');
+        console.error(`❌ Total de mensagens recebidas: ${messageCount}`);
+        console.error('❌ Verifique se o Dashboard App foi configurado corretamente no Chatwoot');
+        console.error('❌ A primeira mensagem recebida deve conter: user, account, conversation, contact');
+
+        // NÃO usar dados mock - forçar erro para debug
         setLoading(false);
+        setAppType(null);
       }
-    }, 10000);
+    }, 3000); // Reduzido de 10s para 3s
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -196,7 +207,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     console.log('📤 Notificando Chatwoot sobre atualização:', label);
     // Exemplo: adicionar label na conversa
     window.parent.postMessage(
-      JSON.stringify({ 
+      JSON.stringify({
         event: 'chatwoot-dashboard-app:set-label',
         label
       }),

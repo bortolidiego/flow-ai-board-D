@@ -7,6 +7,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
 const ChatwootSidebar = () => {
+    console.log('🎯 ChatwootSidebar: Componente renderizado!');
+
     const {
         card,
         loading,
@@ -16,8 +18,11 @@ const ChatwootSidebar = () => {
         refresh
     } = useConversationCard();
 
+    console.log('🎯 ChatwootSidebar: Estado atual:', { card, loading, creating });
+
     // Tentar atualizar quando montar
     useEffect(() => {
+        console.log('🎯 ChatwootSidebar: useEffect executado, chamando refresh()');
         refresh();
     }, []);
 
