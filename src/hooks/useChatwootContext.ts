@@ -182,6 +182,28 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     };
   }, []);
 
+  const requestConversationUpdate = () => {
+    if (!isChatwootFrame) return;
+    console.log('📤 Solicitando atualização de contexto ao Chatwoot');
+    window.parent.postMessage(
+      JSON.stringify({ event: 'chatwoot-dashboard-app:fetch-info' }),
+      '*'
+    );
+  };
+
+  const notifyCardUpdate = (label: string) => {
+    if (!isChatwootFrame) return;
+    console.log('📤 Notificando Chatwoot sobre atualização:', label);
+    // Exemplo: adicionar label na conversa
+    window.parent.postMessage(
+      JSON.stringify({ 
+        event: 'chatwoot-dashboard-app:set-label',
+        label
+      }),
+      '*'
+    );
+  };
+
   return {
     isChatwootFrame,
     context,
@@ -194,5 +216,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     contactEmail: context?.contact?.email,
     contactName: context?.contact?.name,
     contactPhone: context?.contact?.phone_number,
+    requestConversationUpdate,
+    notifyCardUpdate
   };
 };

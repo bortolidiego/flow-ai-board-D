@@ -13,13 +13,15 @@ export interface ChatwootContextType {
   contactEmail: string | undefined;
   contactName: string | undefined;
   contactPhone: string | undefined;
+  requestConversationUpdate: () => void;
+  notifyCardUpdate: (label: string) => void;
 }
 
 const ChatwootContext = createContext<ChatwootContextType | undefined>(undefined);
 
 export function ChatwootContextProvider({ children }: { children: ReactNode }) {
   const chatwootContext = useChatwootContext();
-  
+
   return (
     <ChatwootContext.Provider value={chatwootContext}>
       {children}
