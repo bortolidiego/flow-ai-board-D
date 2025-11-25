@@ -50,6 +50,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     console.log('📍 Current URL:', window.location.href);
 
     let messageCount = 0;
+    let timeoutId: NodeJS.Timeout | null = null;
 
     const handleMessage = (event: MessageEvent) => {
       messageCount++;
@@ -86,6 +87,12 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
       if ((payload?.event === 'push.event' || payload?.event === 'appContext') && payload?.data) {
         console.log('✅ Contexto completo recebido do Chatwoot (formato event):', payload.event, payload.data);
 
+        // Limpar timeout já que recebemos o contexto
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+
         const chatwootData = payload.data;
         setContext({
           user: chatwootData.user,
@@ -121,6 +128,12 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
       // Formato 2: Direto com user, account, conversation, contact
       else if (payload?.user || payload?.account || payload?.conversation || payload?.contact) {
         console.log('✅ Contexto completo recebido do Chatwoot (formato direto):', payload);
+
+        // Limpar timeout já que recebemos o contexto
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
 
         setContext({
           user: payload.user,
@@ -174,7 +187,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     setTimeout(notifyReady, 100);
 
     // Timeout de segurança: se após 3s não receber contexto, mostrar erro
-    const timeout = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (!context) {
         console.error('❌ Timeout: Contexto do Chatwoot não recebido após 3s');
         console.error(`❌ Total de mensagens recebidas: ${messageCount}`);
@@ -189,7 +202,7 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      clearTimeout(timeout);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
