@@ -82,9 +82,9 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
         }
       }
 
-      // Formato 1: { event: 'push.event', data: {...} }
-      if (payload?.event === 'push.event' && payload?.data) {
-        console.log('✅ Contexto completo recebido do Chatwoot (formato push.event):', payload.data);
+      // Formato 1: { event: 'push.event', data: {...} } ou { event: 'appContext', data: {...} }
+      if ((payload?.event === 'push.event' || payload?.event === 'appContext') && payload?.data) {
+        console.log('✅ Contexto completo recebido do Chatwoot (formato event):', payload.event, payload.data);
 
         const chatwootData = payload.data;
         setContext({
