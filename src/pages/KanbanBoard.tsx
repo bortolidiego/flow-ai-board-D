@@ -30,8 +30,15 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useChatwoot } from '@/components/ChatwootContextProvider';
+import ChatwootSidebar from './ChatwootSidebar';
 
 const KanbanBoard = () => {
+  // Failsafe: Se a URL contém 'chatwoot-sidebar', renderizar o componente correto
+  // Isso corrige problemas de roteamento onde o App cai no KanbanBoard por engano
+  if (window.location.href.includes('chatwoot-sidebar')) {
+    return <ChatwootSidebar />;
+  }
+
   const { workspace, loading: workspaceLoading } = useWorkspace();
   const {
     pipeline,
@@ -70,18 +77,18 @@ const KanbanBoard = () => {
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const isMobile = useIsMobile();
-  
+
   // Usar contexto do Chatwoot
-  const { 
-    isChatwootFrame, 
-    context, 
-    appType, 
-    conversationId, 
-    contactId, 
-    contactEmail, 
+  const {
+    isChatwootFrame,
+    context,
+    appType,
+    conversationId,
+    contactId,
+    contactEmail,
     contactPhone,
     contactName, // Adicionado aqui
-    agentName 
+    agentName
   } = useChatwoot();
   const [autoFilterApplied, setAutoFilterApplied] = useState(false);
   const [customerProfileIdFromChatwoot, setCustomerProfileIdFromChatwoot] = useState<string | null>(null);
@@ -113,15 +120,15 @@ const KanbanBoard = () => {
       if (!isChatwootFrame || autoFilterApplied || !context) return;
 
       console.log('🎯 Aplicando filtro automático para contexto Chatwoot:', appType);
-      
+
       // Resetar filtros antes de aplicar o novo
       resetFilters();
 
       if (appType === 'conversation_sidebar' && conversationId) {
         console.log('✅ Filtrando por Conversation ID:', conversationId);
         updateFilter('chatwootConversationId', [conversationId.toString()]);
-        
-        const conversationCards = cards.filter(card => 
+
+        const conversationCards = cards.filter(card =>
           card.chatwootConversationId === conversationId.toString()
         );
         if (conversationCards.length === 1) {
@@ -146,8 +153,8 @@ const KanbanBoard = () => {
         if (profileIdToFilter) {
           setCustomerProfileIdFromChatwoot(profileIdToFilter);
           updateFilter('customerProfileId', [profileIdToFilter]);
-          
-          const contactCards = cards.filter(card => 
+
+          const contactCards = cards.filter(card =>
             card.customerProfileId === profileIdToFilter
           );
           if (contactCards.length === 1) {
@@ -159,7 +166,7 @@ const KanbanBoard = () => {
       } else {
         console.log('ℹ️ Nenhum filtro específico do Chatwoot aplicado (Dashboard App ou contexto incompleto).');
       }
-      
+
       setAutoFilterApplied(true);
     };
 
@@ -178,7 +185,7 @@ const KanbanBoard = () => {
 
     setReanalyzing(true);
     setReanalysisProgress({ current: 0, total: cards.length });
-    
+
     toast({
       title: "Reanálise iniciada",
       description: "Processando todos os cards. Isso pode levar alguns minutos...",
@@ -206,7 +213,7 @@ const KanbanBoard = () => {
       if (error) throw error;
 
       setReanalysisProgress({ current: data.total, total: data.total });
-      
+
       toast({
         title: "Reanálise concluída!",
         description: `${data.successful} cards analisados com sucesso de ${data.total} total.`,
@@ -265,13 +272,13 @@ const KanbanBoard = () => {
     setSelectedCardIds(prev => {
       const newSet = new Set(prev);
       const allSelected = columnCards.length > 0 && columnCards.every(card => newSet.has(card.id));
-      
+
       if (allSelected) {
         columnCards.forEach(card => newSet.delete(card.id));
       } else {
         columnCards.forEach(card => newSet.add(card.id));
       }
-      
+
       return newSet;
     });
   };
@@ -290,7 +297,7 @@ const KanbanBoard = () => {
   const handleBulkDelete = async () => {
     const idsToDelete = Array.from(selectedCardIds);
     const success = await deleteCards(idsToDelete);
-    
+
     if (success) {
       setSelectedCardIds(new Set());
       setSelectionMode(false);
@@ -335,14 +342,14 @@ const KanbanBoard = () => {
     if (!activeCardData) return;
 
     const overColumnId = over.id as string;
-    
+
     const targetColumn = pipeline?.columns.find(col => col.id === overColumnId);
     if (targetColumn?.name === 'Finalizados') {
       setCardToComplete(active.id as string);
       setCompletionDialogOpen(true);
       return;
     }
-    
+
     if (activeCardData.columnId !== overColumnId) {
       await updateCardColumn(active.id as string, overColumnId);
     }
@@ -387,9 +394,9 @@ const KanbanBoard = () => {
                 </div>
                 <p className={cn("text-muted-foreground", isMobile ? "text-xs" : "text-xs")}>Gestão visual de leads e oportunidades</p>
               </div>
-              
+
               {isMobile && pipeline && (
-                <DeletedCardsSheet 
+                <DeletedCardsSheet
                   pipelineId={pipeline.id}
                   onRestore={refreshCards}
                 />
@@ -409,12 +416,12 @@ const KanbanBoard = () => {
                       <CheckSquare className={cn(isMobile ? "w-5 h-5" : "w-4 h-4")} />
                       {isMobile ? "Seleção" : "Modo Seleção"}
                     </Button>
-                    
+
                     {!isMobile && pipeline && (
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <div>
-                            <DeletedCardsSheet 
+                            <DeletedCardsSheet
                               pipelineId={pipeline.id}
                               onRestore={refreshCards}
                             />
@@ -499,75 +506,75 @@ const KanbanBoard = () => {
 
       {/* Filters Bar - Fixed */}
       <div className={cn("shrink-0 z-10 bg-background/50 backdrop-blur-sm border-b border-border/10 relative", isMobile ? "px-3 py-3" : "px-6 py-3")}>
-         <KanbanFilters
-            filters={filters}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            updateFilter={updateFilter}
-            updateCustomFieldFilter={updateCustomFieldFilter}
-            resetFilters={resetFilters}
-            activeFiltersCount={activeFiltersCount}
-            totalCards={cards.length}
-            filteredCount={filteredCards.length}
-            cards={cards}
-            savedViews={savedViews}
-            saveView={saveView}
-            loadView={loadView}
-            deleteView={deleteView}
-          />
+        <KanbanFilters
+          filters={filters}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          updateFilter={updateFilter}
+          updateCustomFieldFilter={updateCustomFieldFilter}
+          resetFilters={resetFilters}
+          activeFiltersCount={activeFiltersCount}
+          totalCards={cards.length}
+          filteredCount={filteredCards.length}
+          cards={cards}
+          savedViews={savedViews}
+          saveView={saveView}
+          loadView={loadView}
+          deleteView={deleteView}
+        />
 
-          {selectionMode && selectedCardIds.size > 0 && (
-            <div className="mt-2">
-              <BulkActionsBar
-                selectedCount={selectedCardIds.size}
-                onCancel={() => {
-                  setSelectedCardIds(new Set());
-                  setSelectionMode(false);
-                }}
-                onDelete={handleBulkDelete}
-                onTransfer={handleBulkTransfer}
-                columns={pipeline?.columns || []}
-              />
-            </div>
-          )}
-          
-          {/* Indicador de contexto do Chatwoot - MELHORADO */}
-          {isChatwootFrame && (
-            <Alert className="mt-2">
-              <MessageSquare className="h-4 w-4" />
-              <AlertDescription>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {context ? '✅ Conectado ao Chatwoot' : '⚠️ Aguardando contexto do Chatwoot'}
-                    </p>
-                    {context && (
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        {agentName && <span>Agente: <strong>{agentName}</strong></span>}
-                        {appType === 'conversation_sidebar' && conversationId && <span>Conversa: <strong>#{conversationId}</strong></span>}
-                        {appType === 'contact_sidebar' && (contactName || contactEmail || contactPhone) && (
-                          <span>Contato: <strong>{contactName || contactEmail || contactPhone}</strong></span>
-                        )}
-                        {filteredCards.length > 0 && (
-                          <span className="text-primary font-medium">
-                            {filteredCards.length} card(s) {appType === 'conversation_sidebar' ? 'desta conversa' : 'deste contato'}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {!context && (
-                      <p className="text-xs text-muted-foreground">
-                        Verifique o console (F12) para logs de debug
-                      </p>
-                    )}
-                  </div>
+        {selectionMode && selectedCardIds.size > 0 && (
+          <div className="mt-2">
+            <BulkActionsBar
+              selectedCount={selectedCardIds.size}
+              onCancel={() => {
+                setSelectedCardIds(new Set());
+                setSelectionMode(false);
+              }}
+              onDelete={handleBulkDelete}
+              onTransfer={handleBulkTransfer}
+              columns={pipeline?.columns || []}
+            />
+          </div>
+        )}
+
+        {/* Indicador de contexto do Chatwoot - MELHORADO */}
+        {isChatwootFrame && (
+          <Alert className="mt-2">
+            <MessageSquare className="h-4 w-4" />
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">
+                    {context ? '✅ Conectado ao Chatwoot' : '⚠️ Aguardando contexto do Chatwoot'}
+                  </p>
+                  {context && (
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      {agentName && <span>Agente: <strong>{agentName}</strong></span>}
+                      {appType === 'conversation_sidebar' && conversationId && <span>Conversa: <strong>#{conversationId}</strong></span>}
+                      {appType === 'contact_sidebar' && (contactName || contactEmail || contactPhone) && (
+                        <span>Contato: <strong>{contactName || contactEmail || contactPhone}</strong></span>
+                      )}
+                      {filteredCards.length > 0 && (
+                        <span className="text-primary font-medium">
+                          {filteredCards.length} card(s) {appType === 'conversation_sidebar' ? 'desta conversa' : 'deste contato'}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {!context && (
-                    <AlertCircle className="h-5 w-5 text-yellow-500 animate-pulse" />
+                    <p className="text-xs text-muted-foreground">
+                      Verifique o console (F12) para logs de debug
+                    </p>
                   )}
                 </div>
-              </AlertDescription>
-            </Alert>
-          )}
+                {!context && (
+                  <AlertCircle className="h-5 w-5 text-yellow-500 animate-pulse" />
+                )}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       {/* Kanban Board Area */}
@@ -578,8 +585,8 @@ const KanbanBoard = () => {
         )}>
           <div className="inline-flex min-w-full justify-center items-start">
             <div className={cn(
-                "flex gap-4",
-                isMobile && "flex-col w-full"
+              "flex gap-4",
+              isMobile && "flex-col w-full"
             )}>
               {pipeline?.columns.map((column) => {
                 const columnCards = getColumnCards(column.id);
