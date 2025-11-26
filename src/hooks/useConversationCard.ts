@@ -37,10 +37,17 @@ export const useConversationCard = () => {
             try {
                 // Se não tiver workspace, não buscar
                 if (!workspace?.id) {
+                    console.log('⚠️ useConversationCard: Workspace ID missing', workspace);
                     setCard(null);
                     setLoading(false);
                     return;
                 }
+
+                console.log('🔍 useConversationCard: Searching with', {
+                    workspaceId: workspace.id,
+                    conversationId,
+                    contactId
+                });
 
                 // Prioridade 1: Buscar por Conversation ID
                 if (conversationId) {
@@ -51,6 +58,8 @@ export const useConversationCard = () => {
                         .eq('workspace_id', workspace.id)
                         .eq('chatwoot_conversation_id', conversationId.toString())
                         .maybeSingle();
+
+                    console.log('🔍 Search by ConversationID result:', { data, error });
 
                     if (!error && data) {
                         setCard(formatCardData(data));
