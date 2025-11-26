@@ -21,6 +21,7 @@ import ChatwootSidebar from '@/pages/ChatwootSidebar';
 import NotFound from '@/pages/NotFound';
 
 function App() {
+  console.log('🚀 App.tsx rendering - Routes defined:', ['/auth', '/provision', '/chatwoot-sidebar']);
   return (
     <ErrorBoundary>
       <HashRouter>
