@@ -1,3 +1,4 @@
+$content = @'
 {
   "name": "vite_react_shadcn_ts",
   "private": true,
@@ -90,3 +91,5 @@
     "vite": "^5.4.19"
   }
 }
+'@
+$content | Out-File -FilePath package.json -Encoding UTF8 -Force
