@@ -59,13 +59,30 @@ export const useConversationCard = () => {
                 contactId
             });
 
+            // Buscar pipeline e colunas do workspace
+            const { data: pipelineData } = await supabase
+                .from('pipelines')
+                .select('id, columns(id)')
+                .eq('workspace_id', workspace.id)
+                .single();
+
+            if (!pipelineData?.columns || !Array.isArray(pipelineData.columns)) {
+                console.log('⚠️ fetchCard: No pipeline or columns found for workspace');
+                setCard(null);
+                setLoading(false);
+                return;
+            }
+
+            const columnIds = (pipelineData.columns as any[]).map(c => c.id);
+            console.log('🔍 fetchCard: Found column IDs:', columnIds);
+
             // Prioridade 1: Buscar por Conversation ID
             if (conversationId) {
                 const { data, error } = await supabase
                     .from('cards')
                     .select('*')
                     .is('deleted_at', null)
-                    .eq('workspace_id', workspace.id)
+                    .in('column_id', columnIds)
                     .eq('chatwoot_conversation_id', conversationId.toString())
                     .maybeSingle();
 
@@ -84,7 +101,7 @@ export const useConversationCard = () => {
                     .from('cards')
                     .select('*')
                     .is('deleted_at', null)
-                    .eq('workspace_id', workspace.id)
+                    .in('column_id', columnIds)
                     .eq('customer_profile_id', contactId.toString())
                     .maybeSingle();
 
