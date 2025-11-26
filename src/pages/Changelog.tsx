@@ -13,6 +13,23 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "2.5.0",
+    date: "2025-11-26",
+    type: "fix",
+    changes: [
+      "Corrigido carregamento automático do card no Chatwoot Sidebar",
+      "Implementado estado compartilhado para sobreviver ao React StrictMode",
+      "Corrigida query de cards para usar column_id ao invés de workspace_id inexistente",
+      "Adicionado import de useCallback faltante em useConversationCard",
+      "Corrigido erro de sintaxe em ChatwootSidebar.tsx",
+      "Corrigida query de funnel_config para usar pipeline_id",
+      "Implementada solicitação explícita de contexto ao Chatwoot no mount",
+      "Corrigido problema de package.json corrompido usando script Node.js",
+      "Adicionada lógica de busca de pipeline e colunas antes de buscar cards",
+      "Melhorados logs de debug para rastreamento de contexto e queries",
+    ],
+  },
+  {
     version: "2.4.0",
     date: "2025-11-10",
     type: "fix",
