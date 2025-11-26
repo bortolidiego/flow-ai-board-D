@@ -38,26 +38,6 @@ const ChatwootSidebar = () => {
                 // Using any cast to bypass strict type checking for quick fix
                 const { data: pipeline, error: pipelineError } = await (supabase as any)
                     .from('pipelines')
-                    .select('*') // Changed to * to avoid column errors
-                    .eq('workspace_id', workspace.id)
-                    .maybeSingle();
-
-                if (pipelineError) console.error('❌ Error fetching pipeline:', pipelineError);
-
-                const { data: funnelConfig, error: funnelError } = await (supabase as any)
-                    .from('funnel_config')
-                    .select('*')
-                    .eq('workspace_id', workspace.id);
-
-                if (funnelError) console.error('❌ Error fetching funnel_config:', funnelError);
-
-                if (pipeline) {
-                    setPipelineConfig({
-                        customFields: pipeline.custom_fields_config || [],
-                        funnelTypes: funnelConfig || [],
-                        aiConfig: pipeline.ai_config
-                    });
-                }
             } catch (error) {
                 console.error('Error fetching pipeline config:', error);
             }

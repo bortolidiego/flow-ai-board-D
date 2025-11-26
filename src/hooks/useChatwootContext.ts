@@ -184,7 +184,15 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
     };
 
     // Enviar ready após um pequeno delay para garantir que o Chatwoot está escutando
-    setTimeout(notifyReady, 100);
+    setTimeout(() => {
+      notifyReady();
+      // Também solicitar explicitamente as informações
+      console.log('📤 Solicitando atualização de contexto ao Chatwoot (on mount)');
+      window.parent.postMessage(
+        JSON.stringify({ event: 'chatwoot-dashboard-app:fetch-info' }),
+        '*'
+      );
+    }, 100);
 
     // Timeout de segurança: se após 3s não receber contexto, mostrar erro
     timeoutId = setTimeout(() => {
