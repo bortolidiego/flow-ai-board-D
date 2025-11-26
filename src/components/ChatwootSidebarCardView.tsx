@@ -25,14 +25,16 @@ interface ChatwootSidebarCardViewProps {
     card: KanbanCardType;
     onUpdate: (updates: Partial<KanbanCardType>) => Promise<void>;
     loading?: boolean;
+    autoEdit?: boolean;
 }
 
 export const ChatwootSidebarCardView = ({
     card,
     onUpdate,
-    loading = false
+    loading = false,
+    autoEdit = false
 }: ChatwootSidebarCardViewProps) => {
-    const [editing, setEditing] = useState(false);
+    const [editing, setEditing] = useState(autoEdit);
     const [formData, setFormData] = useState({
         title: card.title,
         description: card.description,

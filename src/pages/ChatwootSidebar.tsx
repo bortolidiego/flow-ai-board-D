@@ -42,6 +42,7 @@ const ChatwootSidebar = () => {
                     <ChatwootSidebarCardView
                         card={card}
                         onUpdate={updateCard}
+                        autoEdit={true}
                     />
                 ) : (
                     <div className="h-full flex flex-col justify-center space-y-6">
