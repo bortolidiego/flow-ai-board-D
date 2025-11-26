@@ -2,22 +2,19 @@ import React from 'react';
 import { useProvisioning } from '@/hooks/useProvisioning';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useChatwootContext } from '@/hooks/useChatwootContext';
 
 export function ProvisionGate({ children }: { children: React.ReactNode }) {
   const { isProvisioning, isProvisioned } = useProvisioning();
+  const { isChatwootFrame } = useChatwootContext();
 
   if (isProvisioning) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
-          <h2 className="text-xl font-semibold mb-2">Configurando Workspace</h2>
-          <p className="text-muted-foreground">
-            Estamos configurando seu ambiente de trabalho. Isso pode levar alguns segundos...
-          </p>
-        </div>
-      </div>
-    );
+    // ...
+  }
+
+  // Se não está provisionado, mas é Chatwoot Frame, permitir (o sidebar lida com seus erros)
+  if (!isProvisioned && isChatwootFrame) {
+    return <>{children}</>;
   }
 
   // Se não está provisionando mas também não está provisionado, mostrar erro
@@ -30,7 +27,7 @@ export function ProvisionGate({ children }: { children: React.ReactNode }) {
             <AlertDescription>
               <strong>Erro de Configuração</strong>
               <br />
-              Não foi possível configurar o workspace automaticamente. 
+              Não foi possível configurar o workspace automaticamente.
               Entre em contato com o administrador ou tente fazer login novamente.
             </AlertDescription>
           </Alert>

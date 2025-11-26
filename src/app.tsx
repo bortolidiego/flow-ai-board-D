@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toaster';
 import { AppLayout } from '@/components/AppLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -24,7 +24,7 @@ function App() {
   console.log('🚀 App.tsx rendering - Routes defined:', ['/auth', '/provision', '/chatwoot-sidebar']);
   return (
     <ErrorBoundary>
-      <HashRouter>
+      <BrowserRouter>
         <ChatwootContextProvider>
           <ChatwootAuthHandler>
             <Routes>
@@ -116,7 +116,7 @@ function App() {
             </Routes>
           </ChatwootAuthHandler>
         </ChatwootContextProvider>
-      </HashRouter>
+      </BrowserRouter>
       <Toaster />
     </ErrorBoundary>
   );
