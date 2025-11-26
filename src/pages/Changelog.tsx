@@ -13,6 +13,24 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "2.6.0",
+    date: "2025-11-26",
+    type: "feature",
+    changes: [
+      "Migração completa de OpenAI para OpenRouter - suporte a múltiplos provedores de IA",
+      "Campo de configuração de API Key do OpenRouter por workspace (obrigatório)",
+      "Modelos de IA agora são configuráveis via input de texto livre",
+      "Suporte a modelos de múltiplos provedores: OpenAI, Anthropic, Google, Meta, Mistral",
+      "Modelo de transcrição de áudio configurável (padrão: openai/whisper-1)",
+      "Removida dependência de chave API global - cada workspace configura sua própria chave",
+      "Edge Functions atualizadas: analyze-conversation e audio-transcribe",
+      "Novas colunas no banco: transcription_model e openrouter_api_key",
+      "Documentação completa em OPENROUTER_SETUP.md com guia de configuração",
+      "Validação de API key obrigatória antes de salvar configurações",
+      "Interface melhorada com campos de input para modelos e exemplos inline",
+    ],
+  },
+  {
     version: "2.5.0",
     date: "2025-11-26",
     type: "fix",

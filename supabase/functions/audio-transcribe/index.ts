@@ -103,13 +103,13 @@ async function fetchAudio(url, apiKey) {
         },
         label: "query + Api-Access-Token header"
       });
-    } catch  {
-    // URL inválida, ignora fallback de query
+    } catch {
+      // URL inválida, ignora fallback de query
     }
   }
-  console.log("🔄 Estratégias de download:", strategies.map((s)=>s.label));
+  console.log("🔄 Estratégias de download:", strategies.map((s) => s.label));
   let lastErrorText = "";
-  for (const strat of strategies){
+  for (const strat of strategies) {
     try {
       console.log("🌐 Tentando baixar via:", strat.label, "URL:", strat.url);
       const res = await tryFetch(strat.url, strat.headers);
@@ -128,7 +128,7 @@ async function fetchAudio(url, apiKey) {
           contentType
         };
       } else {
-        const t = await res.text().catch(()=>"");
+        const t = await res.text().catch(() => "");
         lastErrorText = `status=${res.status} body=${t?.slice(0, 300) || ""}`;
         console.warn("❌ Falha ao baixar áudio via", strat.label, lastErrorText);
       }
@@ -141,9 +141,12 @@ async function fetchAudio(url, apiKey) {
   throw new Error(`Falha ao baixar áudio (${lastErrorText || "desconhecido"})`);
 }
 
-async function transcribeWithOpenAI(buf, contentType) {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");
+async function transcribeWithOpenRouter(buf, contentType) {
+  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY não configurada");
+
+  // Obter modelo configurado ou usar padrão
+  const model = Deno.env.get("OPENROUTER_TRANSCRIPTION_MODEL") || "openai/whisper-1";
   // Ajusta content-type para Whisper
   const ct = normalizeContentType(contentType);
   const file = new File([
@@ -153,33 +156,36 @@ async function transcribeWithOpenAI(buf, contentType) {
   });
   const form = new FormData();
   form.append("file", file);
-  form.append("model", "whisper-1");
+  form.append("model", model);
   form.append("language", "pt");
-  console.log("🤖 Enviando para transcrição na OpenAI...", {
+  console.log("🤖 Enviando para transcrição no OpenRouter...", {
+    model: model,
     fileType: file.type,
     fileSize: file.size
   });
-  const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+  const resp = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`
+      Authorization: `Bearer ${apiKey}`,
+      "HTTP-Referer": "https://flowaiboard.com",
+      "X-Title": "Flow AI Board"
     },
     body: form
   });
   if (!resp.ok) {
     const errText = await resp.text();
-    console.error("❌ Falha na API da OpenAI:", {
+    console.error("❌ Falha na API do OpenRouter:", {
       status: resp.status,
       body: errText
     });
     throw new Error(`Falha na transcrição: ${resp.status} - ${errText}`);
   }
   const data = await resp.json();
-  console.log("✅ Transcrição da OpenAI recebida.");
+  console.log("✅ Transcrição do OpenRouter recebida.");
   return data?.text;
 }
 
-serve(async (req)=>{
+serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       headers: corsHeaders
@@ -200,7 +206,7 @@ serve(async (req)=>{
       });
     }
     const { buf, contentType } = await fetchAudio(body.url, body.chatwoot_api_key);
-    const transcript = await transcribeWithOpenAI(buf, body.content_type || contentType);
+    const transcript = await transcribeWithOpenRouter(buf, body.content_type || contentType);
     return new Response(JSON.stringify({
       transcript
     }), {

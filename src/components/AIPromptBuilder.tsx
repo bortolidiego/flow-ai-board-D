@@ -3,22 +3,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  ShoppingCart, Briefcase, Home, Heart, GraduationCap, 
-  Headphones, Settings, AlertCircle, Check, Sparkles 
+import {
+  ShoppingCart, Briefcase, Home, Heart, GraduationCap,
+  Headphones, Settings, AlertCircle, Check, Sparkles
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { 
-  BUSINESS_TEMPLATES, 
-  OBJECTIVE_LABELS, 
-  OBJECTIVE_DESCRIPTIONS,
-  AI_MODELS 
+import {
+  BUSINESS_TEMPLATES,
+  OBJECTIVE_LABELS,
+  OBJECTIVE_DESCRIPTIONS
 } from "@/lib/promptTemplates";
 import { buildPromptFromConfig, validatePromptConfig } from "@/lib/promptBuilder";
 import type { CustomField, AIConfig } from "@/lib/promptBuilder";
@@ -46,7 +45,9 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
     use_custom_prompt: false
   });
   const [customPrompt, setCustomPrompt] = useState('');
+  const [openrouterApiKey, setOpenrouterApiKey] = useState('');
   const [modelName, setModelName] = useState(DEFAULT_MODEL);
+  const [transcriptionModel, setTranscriptionModel] = useState('openai/whisper-1');
   const [analyzeOnMessage, setAnalyzeOnMessage] = useState(true);
   const [analyzeOnClose, setAnalyzeOnClose] = useState(true);
 
@@ -72,12 +73,19 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
           use_custom_prompt: data.use_custom_prompt || false
         });
         setCustomPrompt(data.custom_prompt || '');
-        
-        // Garante que o modelo carregado é um dos modelos válidos (OpenAI)
+
+        // Carregar modelo de análise
         const loadedModel = data.model_name || DEFAULT_MODEL;
-        const isValidModel = AI_MODELS.some(m => m.id === loadedModel);
-        setModelName(isValidModel ? loadedModel : DEFAULT_MODEL);
-        
+        setModelName(loadedModel);
+
+        // Carregar modelo de transcrição
+        const loadedTranscriptionModel = data.transcription_model || 'openai/whisper-1';
+        setTranscriptionModel(loadedTranscriptionModel);
+
+        // Carregar API key do OpenRouter (se existir)
+        const loadedApiKey = data.openrouter_api_key || '';
+        setOpenrouterApiKey(loadedApiKey);
+
         setAnalyzeOnMessage(data.analyze_on_message ?? true);
         setAnalyzeOnClose(data.analyze_on_close ?? true);
       } else {
@@ -95,7 +103,7 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
   const createDefaultConfig = async () => {
     try {
       const generatedPrompt = buildPromptFromConfig(config, customFields);
-      
+
       const { error } = await supabase
         .from('pipeline_ai_config')
         .insert({
@@ -117,8 +125,15 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Validar que a API key foi configurada
+      if (!openrouterApiKey || openrouterApiKey.trim() === '') {
+        toast.error('Chave API do OpenRouter é obrigatória');
+        setSaving(false);
+        return;
+      }
+
       const generatedPrompt = buildPromptFromConfig(config, customFields);
-      
+
       const { error } = await supabase
         .from('pipeline_ai_config')
         .upsert({
@@ -128,7 +143,9 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
           generated_prompt: generatedPrompt,
           custom_prompt: config.use_custom_prompt ? customPrompt : null,
           use_custom_prompt: config.use_custom_prompt,
+          openrouter_api_key: openrouterApiKey,
           model_name: modelName,
+          transcription_model: transcriptionModel,
           analyze_on_message: analyzeOnMessage,
           analyze_on_close: analyzeOnClose,
           updated_at: new Date().toISOString()
@@ -161,13 +178,13 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
     const newObjectives = config.objectives.includes(objectiveId)
       ? config.objectives.filter(id => id !== objectiveId)
       : [...config.objectives, objectiveId];
-    
+
     setConfig({ ...config, objectives: newObjectives });
   };
 
   const validation = validatePromptConfig(config, customFields);
-  const generatedPrompt = config.use_custom_prompt 
-    ? customPrompt 
+  const generatedPrompt = config.use_custom_prompt
+    ? customPrompt
     : buildPromptFromConfig(config, customFields);
 
   const currentTemplate = BUSINESS_TEMPLATES[config.business_type];
@@ -199,7 +216,7 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
             <CardHeader>
               <CardTitle>Selecione o Tipo de Negócio</CardTitle>
               <CardDescription>
-                Escolha o template que melhor se adequa ao seu negócio. 
+                Escolha o template que melhor se adequa ao seu negócio.
                 Cada template vem com prompts otimizados.
               </CardDescription>
             </CardHeader>
@@ -208,16 +225,15 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
                 {Object.values(BUSINESS_TEMPLATES).map(template => {
                   const Icon = ICON_MAP[template.icon] || Settings;
                   const isSelected = config.business_type === template.id;
-                  
+
                   return (
                     <button
                       key={template.id}
                       onClick={() => handleTemplateSelect(template.id)}
-                      className={`p-4 rounded-lg border-2 transition-all text-left ${
-                        isSelected 
-                          ? 'border-primary bg-primary/5' 
-                          : 'border-border hover:border-primary/50'
-                      }`}
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${isSelected
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                        }`}
                     >
                       <div className="flex items-start gap-3">
                         <Icon className={`w-5 h-5 mt-1 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -284,27 +300,59 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label>Modelo de IA</Label>
-                <Select value={modelName} onValueChange={setModelName}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AI_MODELS.map(model => (
-                      <SelectItem key={model.id} value={model.id}>
-                        <div className="flex items-center gap-2">
-                          {model.name}
-                          {model.recommended && (
-                            <span className="text-xs text-primary">(Recomendado)</span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="flex items-center gap-1">
+                  Chave API do OpenRouter
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="password"
+                  value={openrouterApiKey}
+                  onChange={(e) => setOpenrouterApiKey(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  className="font-mono"
+                  required
+                />
                 <p className="text-sm text-muted-foreground">
-                  {AI_MODELS.find(m => m.id === modelName)?.description}
+                  <strong>Obrigatório.</strong> Obtenha sua chave em{' '}
+                  <a
+                    href="https://openrouter.ai/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    openrouter.ai/keys
+                  </a>
                 </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Modelo para Análise de Conversas</Label>
+                  <Input
+                    value={modelName}
+                    onChange={(e) => setModelName(e.target.value)}
+                    placeholder="openai/gpt-4o-mini"
+                    className="font-mono"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Formato: <code>provedor/nome-do-modelo</code>
+                    <br />
+                    Exemplos: openai/gpt-4o-mini, anthropic/claude-3.5-sonnet, google/gemini-2.0-flash-exp
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Modelo para Transcrição de Áudio</Label>
+                  <Input
+                    value={transcriptionModel}
+                    onChange={(e) => setTranscriptionModel(e.target.value)}
+                    placeholder="openai/whisper-1"
+                    className="font-mono"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Modelo OpenRouter para transcrição de áudios do Chatwoot
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -340,7 +388,7 @@ export function AIPromptBuilder({ pipelineId, customFields, onUpdate }: AIPrompt
                   <Label>Modo Avançado</Label>
                   <Switch
                     checked={config.use_custom_prompt}
-                    onCheckedChange={(checked) => 
+                    onCheckedChange={(checked) =>
                       setConfig({ ...config, use_custom_prompt: checked })
                     }
                   />

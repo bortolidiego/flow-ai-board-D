@@ -136,13 +136,13 @@ function buildAIFunctionSchema(customFields: any[], funnelTypes: string[]) {
         type: getSchemaType(field.field_type),
         description: field.field_label
       };
-      
+
       // Add enum for SELECT fields
       if (field.field_type === 'select' && field.field_options && field.field_options.length > 0) {
         fieldSchema.enum = field.field_options;
         fieldSchema.description += `. ESCOLHA APENAS UM: ${field.field_options.join(', ')}`;
       }
-      
+
       properties.custom_fields.properties[field.field_name] = fieldSchema;
     });
   }
@@ -167,7 +167,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify authentication - accept both user tokens and service role key
@@ -181,7 +180,7 @@ serve(async (req) => {
 
     const token = authHeader.replace('Bearer ', '');
     let user = null;
-    
+
     // Check if it's a service role key (internal call from webhook)
     if (token === supabaseKey) {
       console.log('Service role authentication - internal call');
@@ -239,7 +238,7 @@ serve(async (req) => {
         .eq('workspace_id', workspaceId)
         .eq('user_id', user.id)
         .maybeSingle();
-        
+
       if (membershipError || !membership) {
         console.error('Membership verification failed:', membershipError);
         return new Response(
@@ -251,7 +250,7 @@ serve(async (req) => {
 
     const pipelineId = (card.column as any).pipeline_id;
     const conversationText = card.description || '';
-    
+
     if (!conversationText.trim()) {
       console.log('No conversation to analyze');
       return new Response(
@@ -284,15 +283,21 @@ serve(async (req) => {
 
     // Use default values if no config exists
     let modelName = aiConfig?.model_name || null;
-    
-    // Se não houver modelo configurado, ou se for um modelo Lovable/Google, 
-    // forçamos para um modelo OpenAI se a chave existir, ou falhamos.
-    if (!modelName || modelName.includes('google/')) {
-      modelName = openaiApiKey ? 'openai/gpt-4o-mini' : null;
+
+    // Obter chave API do pipeline (obrigatória)
+    const openrouterApiKey = aiConfig?.openrouter_api_key;
+
+    if (!openrouterApiKey) {
+      throw new Error('OpenRouter API key not configured for this pipeline. Please configure it in Brain → Advanced Settings.');
     }
-    
+
+    // Se não houver modelo configurado, usar modelo padrão
+    if (!modelName || modelName.includes('google/')) {
+      modelName = 'openai/gpt-4o-mini';
+    }
+
     if (!modelName) {
-      throw new Error('AI model not configured and OpenAI API key is missing.');
+      throw new Error('AI model not configured and OpenRouter API key is missing.');
     }
 
     const systemPrompt = aiConfig?.use_custom_prompt && aiConfig?.custom_prompt
@@ -324,7 +329,7 @@ serve(async (req) => {
     console.log('Analyzing conversation for card:', cardId);
     console.log('Using model:', modelName);
     console.log('Custom fields:', customFields?.length || 0);
-    console.log('Attempting analysis with OpenAI...');
+    console.log('Attempting analysis with OpenRouter...');
 
     // Construir instruções de formato de mensagem
     const formatInstructions = `
@@ -342,18 +347,19 @@ As mensagens na conversa seguem este formato:
 - Analise TODA a conversa, não apenas partes dela
 - Avalie o contexto completo para scores e classificações`;
 
-    // Roteamento para OpenAI
+    // Roteamento para OpenRouter
     let response: Response;
-    const openaiModel = modelName.replace('openai/', ''); // Remove prefixo se houver
 
-    response = await fetch('https://api.openai.com/v1/chat/completions', {
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
+        'Authorization': `Bearer ${openrouterApiKey}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://flowaiboard.com',
+        'X-Title': 'Flow AI Board',
       },
       body: JSON.stringify({
-        model: openaiModel,
+        model: modelName,
         messages: [
           {
             role: 'system',
@@ -386,15 +392,15 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', response.status, errorText);
-      throw new Error(`OpenAI API error: ${response.status}`);
+      console.error('OpenRouter API error:', response.status, errorText);
+      throw new Error(`OpenRouter API error: ${response.status}`);
     }
 
-    console.log(`Analysis completed using OpenAI model: ${openaiModel}`)
+    console.log(`Analysis completed using OpenRouter model: ${modelName}`)
 
     const aiData = await response.json();
     const toolCall = aiData.choices[0]?.message?.tool_calls?.[0];
-    
+
     if (!toolCall) {
       throw new Error('No tool call in AI response');
     }
@@ -403,13 +409,13 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     let analysis;
     try {
       const rawArgs = toolCall.function.arguments?.trim() || '{}';
-      
+
       // Tentar remover texto após o último '}'
       const lastBraceIndex = rawArgs.lastIndexOf('}');
-      const cleanedArgs = lastBraceIndex !== -1 
+      const cleanedArgs = lastBraceIndex !== -1
         ? rawArgs.substring(0, lastBraceIndex + 1)
         : rawArgs;
-      
+
       analysis = JSON.parse(cleanedArgs);
     } catch (parseError) {
       console.error('❌ JSON parse error:', parseError);
@@ -441,13 +447,13 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     );
 
     // Processar ciclo de vida com validação completa
-    if (analysis.lifecycle_detection && 
-        analysis.lifecycle_detection.current_stage && 
-        detectedFunnel && 
-        detectedFunnel.lifecycle_stages) {
-      
+    if (analysis.lifecycle_detection &&
+      analysis.lifecycle_detection.current_stage &&
+      detectedFunnel &&
+      detectedFunnel.lifecycle_stages) {
+
       const detectedStage = String(analysis.lifecycle_detection.current_stage).trim();
-      
+
       if (detectedStage) {
         const stageConfig = detectedFunnel.lifecycle_stages.find(
           (s: any) => {
@@ -455,16 +461,16 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
             return stageName === detectedStage.toLowerCase();
           }
         );
-        
+
         if (stageConfig) {
           currentLifecycleStage = stageConfig.stage_name;
           lifecycleProgressPercent = analysis.lifecycle_detection.progress_estimate || stageConfig.progress_percent;
-          
+
           // Se estágio terminal, definir resolution_status
           if (stageConfig.is_terminal) {
             resolutionStatus = stageConfig.resolution_status || 'resolved';
           }
-          
+
           console.log(`✅ Lifecycle detected: stage=${currentLifecycleStage}, progress=${lifecycleProgressPercent}%, resolution=${resolutionStatus}`);
         } else {
           console.warn(`⚠️ Stage "${detectedStage}" not found in lifecycle_stages for funnel "${detectedFunnel.funnel_type}"`);
@@ -537,14 +543,14 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       funnel_type: analysis.funnel_analysis.type,
       service_quality_score: analysis.service_quality.score,
       ai_suggestions: analysis.service_quality.suggestions,
-      
+
       // NOVOS CAMPOS DE CICLO DE VIDA
       current_lifecycle_stage: currentLifecycleStage,
       lifecycle_progress_percent: lifecycleProgressPercent,
       resolution_status: resolutionStatus,
       is_monetary_locked: isMonetaryLocked || card.is_monetary_locked || false,
       last_activity_at: new Date().toISOString(),
-      
+
       updated_at: new Date().toISOString()
     };
 
@@ -582,7 +588,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     if (!columns || columns.length <= 1) {
       console.log('Not enough columns to move cards');
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
           message: 'Analysis completed but card movement skipped (not enough columns)'
         }),
@@ -600,15 +606,15 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
         .eq('funnel_type', newFunnelType)
         .eq('is_active', true)
         .order('created_at', { ascending: true });
-      
+
       if (movementRules && movementRules.length > 0) {
         console.log(`Found ${movementRules.length} movement rules for funnel ${newFunnelType}`);
-        
+
         for (const rule of movementRules) {
           // Verificar condição: lifecycle stage
           if (rule.when_lifecycle_stage === currentLifecycleStage) {
             console.log(`Rule matched: move to column "${rule.move_to_column_name}" when stage is "${currentLifecycleStage}"`);
-            
+
             // Buscar coluna de destino
             const { data: targetColumn } = await supabase
               .from('columns')
@@ -616,7 +622,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
               .eq('pipeline_id', pipelineId)
               .eq('name', rule.move_to_column_name)
               .maybeSingle();
-            
+
             if (targetColumn) {
               targetColumnId = targetColumn.id;
               console.log(`Target column found: ${targetColumnId}`);
@@ -631,7 +637,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     if (targetColumnId && targetColumnId !== card.column_id) {
       const { error: moveError } = await supabase
         .from('cards')
-        .update({ 
+        .update({
           column_id: targetColumnId,
           updated_at: new Date().toISOString()
         })
@@ -646,11 +652,11 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
 
     const currentColumnPosition = columns.findIndex(col => col.id === card.column_id);
     const moveRules = aiConfig?.move_rules?.rules || [];
-    
+
     // Se houver regras customizadas ativas, processar por prioridade
     if (moveRules && moveRules.length > 0) {
       console.log(`Processing ${moveRules.length} custom move rules`);
-      
+
       // Ordenar regras por prioridade
       const sortedRules = [...moveRules]
         .filter((rule: any) => rule.enabled)
@@ -659,11 +665,11 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       for (const rule of sortedRules) {
         let conditionsMet = false;
         const operator = rule.conditions.operator;
-        
+
         // Avaliar condições
         const results = rule.conditions.criteria.map((criterion: any) => {
           let fieldValue: any;
-          
+
           // Obter valor do campo
           if (criterion.field.startsWith('custom_field.')) {
             const fieldName = criterion.field.replace('custom_field.', '');
@@ -718,7 +724,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
         // Se condições atendidas, aplicar ação
         if (conditionsMet) {
           console.log(`Rule "${rule.name}" triggered`);
-          
+
           switch (rule.action.type) {
             case 'move_to_column':
               targetColumnId = rule.action.target;
@@ -739,14 +745,14 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
               break;
             case 'complete_card':
               // Buscar coluna "Finalizados"
-              const finalColumn = columns.find(col => 
-                col.name.toLowerCase() === 'finalizados' || 
+              const finalColumn = columns.find(col =>
+                col.name.toLowerCase() === 'finalizados' ||
                 col.name.toLowerCase() === 'finalized'
               );
-              
+
               if (finalColumn && rule.action.completion_type) {
                 console.log(`Auto-completing card as ${rule.action.completion_type} via rule: ${rule.name}`);
-                
+
                 // Atualizar card com completion
                 const { error: completionError } = await supabase
                   .from('cards')
@@ -758,47 +764,47 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
                     updated_at: new Date().toISOString()
                   })
                   .eq('id', cardId);
-                
+
                 if (completionError) {
                   console.error('Error completing card:', completionError);
                 } else {
                   console.log(`Card ${cardId} completed as ${rule.action.completion_type}`);
-                  
+
                   // Atualizar customer_profile stats se existir
                   if (card.customer_profile_id) {
                     const statField = rule.action.completion_type === 'won' ? 'total_won' :
-                                     rule.action.completion_type === 'lost' ? 'total_lost' : 'total_completed';
-                    
+                      rule.action.completion_type === 'lost' ? 'total_lost' : 'total_completed';
+
                     const { error: profileError } = await supabase.rpc('increment_customer_stat', {
                       profile_id: card.customer_profile_id,
                       stat_field: statField
                     });
-                    
+
                     if (profileError) {
                       console.error('Error updating customer profile stats:', profileError);
                     }
                   }
                 }
-                
+
                 // Marcar que já foi movido para não aplicar lógica padrão
                 targetColumnId = finalColumn.id;
               }
               break;
           }
-          
+
           break; // Primeira regra que atende para
         }
       }
     }
-    
+
     // Se não houver regras customizadas ou nenhuma foi ativada, aplicar regras padrão inteligentes
     if (!targetColumnId) {
       console.log('No custom rules triggered, applying default intelligent rules');
-      
+
       // Lógica padrão de movimentação baseada na análise
       const intentionScore = analysis.funnel_analysis?.score ?? 0;
       const conversationStatus = analysis.conversation_status;
-      
+
       // Se negócio fechado (ganho), mover para última coluna
       if (analysis.win_confirmation && analysis.win_confirmation.trim()) {
         targetColumnId = columns[columns.length - 1].id;
@@ -806,8 +812,8 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       }
       // Se negócio perdido, mover para coluna específica se existir "Perdidos" ou manter na atual
       else if (analysis.loss_reason && analysis.loss_reason.trim()) {
-        const lostColumn = columns.find(col => 
-          col.name.toLowerCase().includes('perdido') || 
+        const lostColumn = columns.find(col =>
+          col.name.toLowerCase().includes('perdido') ||
           col.name.toLowerCase().includes('lost')
         );
         if (lostColumn) {
@@ -828,8 +834,8 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       }
       // Se baixa intenção (<30), mover para coluna de descartados/inativos se existir
       else if (intentionScore < 30) {
-        const inactiveColumn = columns.find(col => 
-          col.name.toLowerCase().includes('inativo') || 
+        const inactiveColumn = columns.find(col =>
+          col.name.toLowerCase().includes('inativo') ||
           col.name.toLowerCase().includes('descartado') ||
           col.name.toLowerCase().includes('inactive')
         );
@@ -901,7 +907,7 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      { 
+      {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }

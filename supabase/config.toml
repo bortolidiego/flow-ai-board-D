@@ -1,4 +1,4 @@
-project_id = "fpivkpyvicqkhgxdmbck"
+project_id = "dqnzwlumxbbissehrumv"
 
 [functions.chatwoot-webhook]
 verify_jwt = false

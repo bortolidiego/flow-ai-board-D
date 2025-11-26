@@ -389,23 +389,3 @@ export const OBJECTIVE_DESCRIPTIONS: Record<string, string> = {
   assess_student_profile: 'Entender perfil e necessidades educacionais do aluno',
   evaluate_resolution: 'Verificar se o problema foi resolvido satisfatoriamente'
 };
-
-export const AI_MODELS = [
-  // OpenAI models
-  {
-    id: 'openai/gpt-4o-mini',
-    name: 'OpenAI GPT-4o Mini',
-    description: 'Rápido e acessível - ótimo para classificação e extração de dados',
-    recommended: true
-  },
-  {
-    id: 'openai/gpt-4o',
-    name: 'OpenAI GPT-4o',
-    description: 'Qualidade superior - indicado para análises detalhadas'
-  },
-  {
-    id: 'openai/o3-mini',
-    name: 'OpenAI o3-mini',
-    description: 'Raciocínio eficiente com bom custo - adequado para decisões e regras'
-  }
-];
