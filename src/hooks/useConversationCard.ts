@@ -24,83 +24,92 @@ export const useConversationCard = () => {
     const [creating, setCreating] = useState(false);
 
     // Buscar card quando o contexto do Chatwoot mudar
-    useEffect(() => {
-        const fetchCard = async () => {
-            if (!isChatwootFrame) return;
+    const fetchCard = useCallback(async () => {
+        console.log('🔄 fetchCard called. Context:', {
+            isChatwootFrame,
+            conversationId,
+            contactId,
+            workspaceId: workspace?.id
+        });
 
-            // Se não tiver IDs, não dá pra buscar
-            if (!conversationId && !contactId && !contactEmail && !contactPhone) {
+        if (!isChatwootFrame) {
+            console.log('⚠️ fetchCard: Not in Chatwoot frame');
+            return;
+        }
+
+        // Se não tiver IDs, não dá pra buscar
+        if (!conversationId && !contactId && !contactEmail && !contactPhone) {
+            console.log('⚠️ fetchCard: No context IDs available');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            // Se não tiver workspace, não buscar
+            if (!workspace?.id) {
+                console.log('⚠️ fetchCard: Workspace ID missing', workspace);
+                setCard(null);
+                setLoading(false);
                 return;
             }
 
-            setLoading(true);
-            try {
-                // Se não tiver workspace, não buscar
-                if (!workspace?.id) {
-                    console.log('⚠️ useConversationCard: Workspace ID missing', workspace);
-                    setCard(null);
+            console.log('🔍 fetchCard: Searching with', {
+                workspaceId: workspace.id,
+                conversationId,
+                contactId
+            });
+
+            // Prioridade 1: Buscar por Conversation ID
+            if (conversationId) {
+                const { data, error } = await supabase
+                    .from('cards')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .eq('workspace_id', workspace.id)
+                    .eq('chatwoot_conversation_id', conversationId.toString())
+                    .maybeSingle();
+
+                console.log('🔍 Search by ConversationID result:', { data, error });
+
+                if (!error && data) {
+                    setCard(formatCardData(data));
                     setLoading(false);
                     return;
                 }
-
-                console.log('🔍 useConversationCard: Searching with', {
-                    workspaceId: workspace.id,
-                    conversationId,
-                    contactId
-                });
-
-                // Prioridade 1: Buscar por Conversation ID
-                if (conversationId) {
-                    const { data, error } = await supabase
-                        .from('cards')
-                        .select('*')
-                        .is('deleted_at', null)
-                        .eq('workspace_id', workspace.id)
-                        .eq('chatwoot_conversation_id', conversationId.toString())
-                        .maybeSingle();
-
-                    console.log('🔍 Search by ConversationID result:', { data, error });
-
-                    if (!error && data) {
-                        setCard(formatCardData(data));
-                        setLoading(false);
-                        return;
-                    }
-                }
-
-                // Prioridade 2: Buscar por Customer Profile ID (Contact ID)
-                if (contactId) {
-                    const { data, error } = await supabase
-                        .from('cards')
-                        .select('*')
-                        .is('deleted_at', null)
-                        .eq('workspace_id', workspace.id)
-                        .eq('customer_profile_id', contactId.toString())
-                        .maybeSingle();
-
-                    if (!error && data) {
-                        setCard(formatCardData(data));
-                        setLoading(false);
-                        return;
-                    }
-                }
-
-                // Prioridade 3: Buscar por Email ou Telefone (via customer_profile)
-                // Isso é mais complexo pois o customer_profile_id no card vem do Chatwoot
-                // Mas podemos tentar achar um customer_profile local que tenha esse email/telefone
-                // E ver se tem cards pra ele. Por enquanto, vamos simplificar e assumir que o contactId é o principal.
-
-                setCard(null);
-            } catch (error) {
-                console.error('Error fetching conversation card:', error);
-            } finally {
-                setLoading(false);
             }
-        };
 
+            // Prioridade 2: Buscar por Customer Profile ID (Contact ID)
+            if (contactId) {
+                const { data, error } = await supabase
+                    .from('cards')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .eq('workspace_id', workspace.id)
+                    .eq('customer_profile_id', contactId.toString())
+                    .maybeSingle();
+
+                if (!error && data) {
+                    setCard(formatCardData(data));
+                    setLoading(false);
+                    return;
+                }
+            }
+
+            console.log('⚠️ fetchCard: No card found');
+            setCard(null);
+        } catch (error) {
+            console.error('Error fetching conversation card:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [conversationId, contactId, contactEmail, contactPhone, isChatwootFrame, workspace?.id]);
+
+    useEffect(() => {
         fetchCard();
+    }, [fetchCard]);
 
-        // Subscribe to realtime changes for this specific card (if it exists)
+    // Subscribe to realtime changes for this specific card (if it exists)
+    useEffect(() => {
         let channel: any;
         if (card?.id) {
             channel = supabase
@@ -122,7 +131,7 @@ export const useConversationCard = () => {
         return () => {
             if (channel) supabase.removeChannel(channel);
         };
-    }, [conversationId, contactId, contactEmail, contactPhone, isChatwootFrame]);
+    }, [card?.id, fetchCard]);
 
     const formatCardData = (data: any): Card => {
         return {
@@ -287,6 +296,8 @@ export const useConversationCard = () => {
         creating,
         createCard,
         updateCard,
-        refresh: requestConversationUpdate
+        createCard,
+        updateCard,
+        refresh: fetchCard
     };
 };

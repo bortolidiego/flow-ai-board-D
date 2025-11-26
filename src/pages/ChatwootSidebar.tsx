@@ -39,75 +39,58 @@ const ChatwootSidebar = () => {
                 const { data: pipeline, error: pipelineError } = await (supabase as any)
                     .from('pipelines')
                     .select('*') // Changed to * to avoid column errors
-                    .eq('workspace_id', workspace.id)
-                    .maybeSingle(); // Changed to maybeSingle
-
-                if (pipelineError) console.error('❌ Error fetching pipeline:', pipelineError);
-
-                const { data: funnelTypes, error: funnelError } = await (supabase as any)
-                    .from('funnel_types')
-                    .select('*')
-                    .eq('workspace_id', workspace.id);
-
-                if (funnelError) console.error('❌ Error fetching funnel_types:', funnelError);
-
-                if (pipeline) {
-                    setPipelineConfig({
-                        customFields: pipeline.custom_fields_config || [],
-                        funnelTypes: funnelTypes || [],
-                        aiConfig: pipeline.ai_config
-                    });
-                }
+            });
+}
             } catch (error) {
-                console.error('Error fetching pipeline config:', error);
-            }
+    console.error('Error fetching pipeline config:', error);
+}
         };
 
-        fetchPipelineConfig();
+fetchPipelineConfig();
     }, [workspace]);
 
-    if (loading) {
-        return (
-            <div className="h-screen w-full flex flex-col items-center justify-center bg-background p-4 space-y-4">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Buscando informações...</p>
-            </div>
-        );
-    }
-
+if (loading) {
     return (
-        <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-hidden">
-                {card ? (
-                    <CardDetailContent
-                        cardId={card.id}
-                        initialCardData={card}
-                        pipelineConfig={pipelineConfig}
-                    />
-                ) : (
-                    <div className="h-full flex flex-col justify-center space-y-6 p-4">
-                        <div className="text-center space-y-2">
-                            <h2 className="text-xl font-semibold tracking-tight">Flow AI Board</h2>
-                            <p className="text-sm text-muted-foreground">
-                                Nenhum card vinculado a esta conversa.
-                            </p>
-                        </div>
-
-                        <ChatwootSidebarCreateCard
-                            onCreate={createCard}
-                            loading={creating}
-                        />
-
-                        <div className="pt-4 text-center">
-                            <Button variant="link" size="sm" onClick={refresh} className="text-xs text-muted-foreground">
-                                Tentar atualizar novamente
-                            </Button>
-                        </div>
-                    </div>
-                )}
-            </div>
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-background p-4 space-y-4">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Buscando informações...</p>
         </div>
     );
+}
+
+return (
+    <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-hidden">
+            {card ? (
+                <CardDetailContent
+                    cardId={card.id}
+                    initialCardData={card}
+                    pipelineConfig={pipelineConfig}
+                />
+            ) : (
+                <div className="h-full flex flex-col justify-center space-y-6 p-4">
+                    <div className="text-center space-y-2">
+                        <h2 className="text-xl font-semibold tracking-tight">Flow AI Board</h2>
+                        <p className="text-sm text-muted-foreground">
+                            Nenhum card vinculado a esta conversa.
+                        </p>
+                    </div>
+
+                    <ChatwootSidebarCreateCard
+                        onCreate={createCard}
+                        loading={creating}
+                    />
+
+                    <div className="pt-4 text-center">
+                        <Button variant="link" size="sm" onClick={refresh} className="text-xs text-muted-foreground">
+                            Tentar atualizar novamente
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </div>
+    </div>
+);
 };
 
 export default ChatwootSidebar;
