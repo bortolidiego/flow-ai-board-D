@@ -35,11 +35,22 @@ export const useConversationCard = () => {
 
             setLoading(true);
             try {
-                let query = supabase.from('cards').select('*').is('deleted_at', null);
+                // Se não tiver workspace, não buscar
+                if (!workspace?.id) {
+                    setCard(null);
+                    setLoading(false);
+                    return;
+                }
 
                 // Prioridade 1: Buscar por Conversation ID
                 if (conversationId) {
-                    const { data, error } = await query.eq('chatwoot_conversation_id', conversationId.toString()).maybeSingle();
+                    const { data, error } = await supabase
+                        .from('cards')
+                        .select('*')
+                        .is('deleted_at', null)
+                        .eq('workspace_id', workspace.id)
+                        .eq('chatwoot_conversation_id', conversationId.toString())
+                        .maybeSingle();
 
                     if (!error && data) {
                         setCard(formatCardData(data));
@@ -54,6 +65,7 @@ export const useConversationCard = () => {
                         .from('cards')
                         .select('*')
                         .is('deleted_at', null)
+                        .eq('workspace_id', workspace.id)
                         .eq('customer_profile_id', contactId.toString())
                         .maybeSingle();
 
