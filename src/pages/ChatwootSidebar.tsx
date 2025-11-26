@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useConversationCard } from '@/hooks/useConversationCard';
 import { ChatwootSidebarCreateCard } from '@/components/ChatwootSidebarCreateCard';
-import { ChatwootSidebarCardView } from '@/components/ChatwootSidebarCardView';
-import { Loader2, AlertCircle } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { CardDetailContent } from '@/components/CardDetailContent';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { useWorkspace } from '@/hooks/useWorkspace';
 
 const ChatwootSidebar = () => {
     console.log('🎯 ChatwootSidebar: Componente renderizado!');
@@ -14,9 +15,11 @@ const ChatwootSidebar = () => {
         loading,
         creating,
         createCard,
-        updateCard,
         refresh
     } = useConversationCard();
+
+    const { workspace } = useWorkspace();
+    const [pipelineConfig, setPipelineConfig] = useState<any>(null);
 
     console.log('🎯 ChatwootSidebar: Estado atual:', { card, loading, creating });
 
@@ -25,6 +28,39 @@ const ChatwootSidebar = () => {
         console.log('🎯 ChatwootSidebar: useEffect executado, chamando refresh()');
         refresh();
     }, []);
+
+    // Buscar configuração do pipeline
+    useEffect(() => {
+        const fetchPipelineConfig = async () => {
+            if (!workspace) return;
+
+            try {
+                // Using any cast to bypass strict type checking for quick fix
+                const { data: pipeline } = await (supabase as any)
+                    .from('pipelines')
+                    .select('custom_fields_config, ai_config')
+                    .eq('workspace_id', workspace.id)
+                    .single();
+
+                const { data: funnelTypes } = await (supabase as any)
+                    .from('funnel_types')
+                    .select('*')
+                    .eq('workspace_id', workspace.id);
+
+                if (pipeline) {
+                    setPipelineConfig({
+                        customFields: pipeline.custom_fields_config || [],
+                        funnelTypes: funnelTypes || [],
+                        aiConfig: pipeline.ai_config
+                    });
+                }
+            } catch (error) {
+                console.error('Error fetching pipeline config:', error);
+            }
+        };
+
+        fetchPipelineConfig();
+    }, [workspace]);
 
     if (loading) {
         return (
@@ -37,15 +73,15 @@ const ChatwootSidebar = () => {
 
     return (
         <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
-            <div className="flex-1 p-4 overflow-hidden">
+            <div className="flex-1 overflow-hidden">
                 {card ? (
-                    <ChatwootSidebarCardView
-                        card={card}
-                        onUpdate={updateCard}
-                        autoEdit={true}
+                    <CardDetailContent
+                        cardId={card.id}
+                        initialCardData={card}
+                        pipelineConfig={pipelineConfig}
                     />
                 ) : (
-                    <div className="h-full flex flex-col justify-center space-y-6">
+                    <div className="h-full flex flex-col justify-center space-y-6 p-4">
                         <div className="text-center space-y-2">
                             <h2 className="text-xl font-semibold tracking-tight">Flow AI Board</h2>
                             <p className="text-sm text-muted-foreground">
