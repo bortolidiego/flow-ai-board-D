@@ -28,19 +28,27 @@ interface ChatwootContextData {
   };
 }
 
+// Shared state outside the hook to survive StrictMode remounts
+let sharedContext: ChatwootContextData | null = null;
+let sharedAppType: 'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null = null;
+let sharedIsChatwootFrame = false;
+let sharedLoading = true;
+
 export const useChatwootContext = (): ChatwootContextType => { // Explicitly define return type
-  const [context, setContext] = useState<ChatwootContextData | null>(null);
-  const [isChatwootFrame, setIsChatwootFrame] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [appType, setAppType] = useState<'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null>(null);
+  const [context, setContext] = useState<ChatwootContextData | null>(sharedContext);
+  const [isChatwootFrame, setIsChatwootFrame] = useState(sharedIsChatwootFrame);
+  const [loading, setLoading] = useState(sharedLoading);
+  const [appType, setAppType] = useState<'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null>(sharedAppType);
 
   useEffect(() => {
     // Verificar se estamos em um iframe
     const inIframe = window.self !== window.top;
+    sharedIsChatwootFrame = inIframe;
     setIsChatwootFrame(inIframe);
 
     if (!inIframe) {
       console.log('ℹ️ App rodando fora de iframe (modo standalone)');
+      sharedLoading = false;
       setLoading(false);
       return;
     }
@@ -94,35 +102,41 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
         }
 
         const chatwootData = payload.data;
-        setContext({
+        const newContext = {
           user: chatwootData.user,
           account: chatwootData.account,
           conversation: chatwootData.conversation,
           contact: chatwootData.contact,
-        });
+        };
+        sharedContext = newContext;
+        setContext(newContext);
 
         // Determinar o tipo de app baseado nos dados recebidos
+        let newAppType: 'dashboard' | 'contact_sidebar' | 'conversation_sidebar' = 'dashboard';
         if (chatwootData.conversation && chatwootData.contact) {
           // Se temos conversa E contato, pode ser dashboard ou conversation sidebar
           // Verificar se estamos em uma conversa específica
           if (chatwootData.conversation.id) {
-            setAppType('conversation_sidebar');
+            newAppType = 'conversation_sidebar';
             console.log('🎯 Detectado: Conversation Sidebar (barra lateral da conversa)');
           } else {
-            setAppType('contact_sidebar');
+            newAppType = 'contact_sidebar';
             console.log('🎯 Detectado: Contact Sidebar (aba do contato)');
           }
         } else if (chatwootData.contact && !chatwootData.conversation) {
-          setAppType('contact_sidebar');
+          newAppType = 'contact_sidebar';
           console.log('🎯 Detectado: Contact Sidebar (aba do contato)');
         } else if (chatwootData.conversation && !chatwootData.contact) {
-          setAppType('conversation_sidebar');
+          newAppType = 'conversation_sidebar';
           console.log('🎯 Detectado: Conversation Sidebar (barra lateral da conversa)');
         } else {
-          setAppType('dashboard');
+          newAppType = 'dashboard';
           console.log('🎯 Detectado: Dashboard App (página principal)');
         }
 
+        sharedAppType = newAppType;
+        setAppType(newAppType);
+        sharedLoading = false;
         setLoading(false);
       }
       // Formato 2: Direto com user, account, conversation, contact
@@ -135,33 +149,39 @@ export const useChatwootContext = (): ChatwootContextType => { // Explicitly def
           timeoutId = null;
         }
 
-        setContext({
+        const newContext = {
           user: payload.user,
           account: payload.account,
           conversation: payload.conversation,
           contact: payload.contact,
-        });
+        };
+        sharedContext = newContext;
+        setContext(newContext);
 
         // Determinar o tipo de app
+        let newAppType: 'dashboard' | 'contact_sidebar' | 'conversation_sidebar' = 'dashboard';
         if (payload.conversation && payload.contact) {
           if (payload.conversation.id) {
-            setAppType('conversation_sidebar');
+            newAppType = 'conversation_sidebar';
             console.log('🎯 Detectado: Conversation Sidebar');
           } else {
-            setAppType('contact_sidebar');
+            newAppType = 'contact_sidebar';
             console.log('🎯 Detectado: Contact Sidebar');
           }
         } else if (payload.contact && !payload.conversation) {
-          setAppType('contact_sidebar');
+          newAppType = 'contact_sidebar';
           console.log('🎯 Detectado: Contact Sidebar');
         } else if (payload.conversation && !payload.contact) {
-          setAppType('conversation_sidebar');
+          newAppType = 'conversation_sidebar';
           console.log('🎯 Detectado: Conversation Sidebar');
         } else {
-          setAppType('dashboard');
+          newAppType = 'dashboard';
           console.log('🎯 Detectado: Dashboard App');
         }
 
+        sharedAppType = newAppType;
+        setAppType(newAppType);
+        sharedLoading = false;
         setLoading(false);
       } else {
         console.log('⚠️ Mensagem recebida mas não contém contexto esperado:', payload);
