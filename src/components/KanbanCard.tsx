@@ -61,7 +61,8 @@ interface KanbanCardProps {
   lifecycleProgressPercent?: number;
   resolutionStatus?: string | null;
   isMonetaryLocked?: boolean;
-  lastActivityAt?: string | null;
+  columnName?: string;
+  updatedAt?: string;
 }
 export const KanbanCard = ({
   id,
@@ -71,6 +72,8 @@ export const KanbanCard = ({
   assignee,
   aiSuggested,
   createdAt,
+  updatedAt,
+  columnName,
   onCardClick,
   chatwootContactName,
   chatwootAgentName,
@@ -113,20 +116,20 @@ export const KanbanCard = ({
   } = useSortable({
     id
   });
-  
+
   const isMobile = useIsMobile();
   const style = {
     transform: CSS.Transform.toString(transform),
     transition
   };
-  
+
   const getScoreColor = (score?: number) => {
     if (!score) return 'text-muted-foreground';
     if (score >= 70) return 'text-green-600 dark:text-green-400';
     if (score >= 40) return 'text-amber-600 dark:text-amber-400';
     return 'text-red-600 dark:text-red-400';
   };
-  
+
   const formatCurrency = (value?: number) => {
     if (!value) return null;
     return new Intl.NumberFormat('pt-BR', {
@@ -174,8 +177,8 @@ export const KanbanCard = ({
   };
 
   // Logic to determine display name (Prioritize Contact Name)
-  const displayTitle = chatwootContactName && chatwootContactName !== chatwootAgentName 
-    ? chatwootContactName 
+  const displayTitle = chatwootContactName && chatwootContactName !== chatwootAgentName
+    ? chatwootContactName
     : title;
 
   // Logic to determine responsible agent
@@ -205,7 +208,7 @@ export const KanbanCard = ({
             {aiSuggested && (
               <Tooltip>
                 <TooltipTrigger>
-                   <Bot className={cn("text-primary animate-pulse flex-shrink-0", isMobile ? "w-5 h-5" : "w-4 h-4")} />
+                  <Bot className={cn("text-primary animate-pulse flex-shrink-0", isMobile ? "w-5 h-5" : "w-4 h-4")} />
                 </TooltipTrigger>
                 <TooltipContent>Sugerido por IA</TooltipContent>
               </Tooltip>
@@ -230,12 +233,12 @@ export const KanbanCard = ({
                 <span className="text-muted-foreground max-w-[100px] truncate">{inboxName}</span>
               </div>
             )}
-            
+
             {/* Funil e Etapa */}
             {(funnelType || currentLifecycleStage) && (
               <div className="flex items-center gap-1.5 bg-muted/40 rounded-full px-2 py-0.5 border border-border/40">
                 {funnelType && (
-                  <span 
+                  <span
                     className={cn("font-medium truncate max-w-[120px]", isMobile ? "text-sm" : "text-xs")}
                     style={{ color: funnelConfig?.color }}
                   >
@@ -243,7 +246,7 @@ export const KanbanCard = ({
                   </span>
                 )}
                 {funnelType && currentLifecycleStage && (
-                   <ArrowRight className="w-3 h-3 text-muted-foreground/50" />
+                  <ArrowRight className="w-3 h-3 text-muted-foreground/50" />
                 )}
                 {currentLifecycleStage && (
                   <span className={cn("text-muted-foreground truncate max-w-[120px]", isMobile ? "text-sm" : "text-xs")}>
@@ -322,16 +325,16 @@ export const KanbanCard = ({
         {lifecycleProgressPercent !== undefined && (
           <div className="space-y-1.5 border-t pt-2 mt-1">
             <div className="flex items-center justify-between text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
-               <span>Progresso</span>
-               <span className="flex items-center gap-1">
-                 {isMonetaryLocked && <Lock className="w-3 h-3 text-red-500" />}
-                 {lifecycleProgressPercent}%
-               </span>
+              <span>Progresso</span>
+              <span className="flex items-center gap-1">
+                {isMonetaryLocked && <Lock className="w-3 h-3 text-red-500" />}
+                {lifecycleProgressPercent}%
+              </span>
             </div>
             <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
-              <div 
-                className="h-1.5 rounded-full transition-all" 
-                style={{ 
+              <div
+                className="h-1.5 rounded-full transition-all"
+                style={{
                   width: `${lifecycleProgressPercent}%`,
                   backgroundColor: funnelConfig?.color || 'hsl(var(--primary))'
                 }}
@@ -402,15 +405,21 @@ export const KanbanCard = ({
           ) : (
             <div className="text-xs text-muted-foreground/50 italic">Sem responsável</div>
           )}
-          
+
           <div className="flex items-center gap-2">
-            <SLABadge 
-              cardId={id}
-              cardCreatedAt={createdAt}
-              completionType={completionType}
+            <SLABadge
+              card={{
+                id,
+                createdAt,
+                updatedAt,
+                lastActivityAt,
+                completionType,
+                columnName
+              }}
+              slaConfig={(pipelineConfig as any)?.slaConfig}
               className={isMobile ? "text-sm" : "text-[10px] px-1.5 py-0.5 h-5"}
             />
-            
+
             {customerProfileId && (
               <Tooltip>
                 <TooltipTrigger>

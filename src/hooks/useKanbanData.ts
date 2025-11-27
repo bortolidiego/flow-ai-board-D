@@ -10,9 +10,10 @@ export interface Card {
   assignee?: string;
   ai_suggested?: boolean;
   createdAt: string;
+  updatedAt?: string;
   columnId: string;
   chatwootContactName?: string;
-  chatwootAgentName?: string; 
+  chatwootAgentName?: string;
   chatwootConversationId?: string;
   chatwootUrl?: string;
   chatwootAccountId?: string;
@@ -76,10 +77,19 @@ export interface AIConfig {
   analyze_on_close: boolean;
 }
 
+export interface SLAConfig {
+  id: string;
+  first_response_minutes: number;
+  ongoing_response_minutes: number;
+  warning_threshold_percent: number;
+  sla_strategy: string;
+}
+
 export interface PipelineConfig {
   customFields: CustomField[];
   funnelTypes: FunnelType[];
   aiConfig?: AIConfig;
+  slaConfig?: SLAConfig;
 }
 
 export interface Pipeline {
@@ -153,6 +163,14 @@ export const useKanbanData = (workspaceId?: string) => {
 
       if (aiConfigError && aiConfigError.code !== 'PGRST116') throw aiConfigError;
 
+      const { data: slaConfigData, error: slaConfigError } = await supabase
+        .from('pipeline_sla_config')
+        .select('*')
+        .eq('pipeline_id', pipelineId)
+        .maybeSingle();
+
+      if (slaConfigError && slaConfigError.code !== 'PGRST116') throw slaConfigError;
+
       const typedFunnelTypes = (funnelTypesData || []).map(d => ({
         ...d,
         lifecycle_stages: (d.lifecycle_stages as any) || []
@@ -162,6 +180,7 @@ export const useKanbanData = (workspaceId?: string) => {
         customFields: customFieldsData || [],
         funnelTypes: typedFunnelTypes,
         aiConfig: aiConfigData || undefined,
+        slaConfig: slaConfigData || undefined,
       });
     } catch (error) {
       console.error('Error fetching pipeline config:', error);
@@ -214,6 +233,7 @@ export const useKanbanData = (workspaceId?: string) => {
         assignee: card.assignee,
         ai_suggested: card.ai_suggested,
         createdAt: card.created_at,
+        updatedAt: card.updated_at,
         columnId: card.column_id,
         chatwootContactName: card.chatwoot_contact_name,
         chatwootAgentName: card.chatwoot_agent_name,
@@ -249,9 +269,9 @@ export const useKanbanData = (workspaceId?: string) => {
   const updateCardColumn = async (cardId: string, newColumnId: string) => {
     const { error } = await supabase
       .from('cards')
-      .update({ 
+      .update({
         column_id: newColumnId,
-        updated_at: new Date().toISOString() 
+        updated_at: new Date().toISOString()
       })
       .eq('id', cardId);
 
@@ -297,7 +317,7 @@ export const useKanbanData = (workspaceId?: string) => {
       });
       return false;
     }
-    
+
     // Refresh handled by caller or realtime
     return true;
   };
@@ -328,7 +348,7 @@ export const useKanbanData = (workspaceId?: string) => {
   useEffect(() => {
     const init = async () => {
       if (!workspaceId) return;
-      
+
       setLoading(true);
       await fetchPipeline(workspaceId);
       setLoading(false);

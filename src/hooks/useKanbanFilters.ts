@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { KanbanFilters, SortOption, SavedView } from '@/types/kanbanFilters';
-import { Card } from '@/hooks/useKanbanData';
+import { Card, Pipeline, PipelineConfig } from '@/hooks/useKanbanData';
 import { useToast } from '@/hooks/use-toast';
+import { calculateSLA } from './useSLA';
 
 const STORAGE_KEY = 'kanban-filters-v2'; // Changed key to reset old incompatible filters
 const VIEWS_STORAGE_KEY = 'kanban-saved-views-v2';
@@ -17,6 +18,7 @@ const defaultFilters: KanbanFilters = {
   productItem: [],
   lostReasons: [],
   resolutionStatus: [],
+  slaStatus: [], // Inicializando novo filtro
   inactivityDays: null,
   dateRange: { start: null, end: null },
   chatwootConversationId: [],
@@ -27,9 +29,9 @@ const defaultFilters: KanbanFilters = {
   customFields: {}
 };
 
-export const useKanbanFilters = (cards: Card[]) => {
+export const useKanbanFilters = (cards: Card[], pipeline?: Pipeline | null, pipelineConfig?: PipelineConfig | null) => {
   const { toast } = useToast();
-  
+
   const [filters, setFilters] = useState<KanbanFilters>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -42,9 +44,9 @@ export const useKanbanFilters = (cards: Card[]) => {
     }
     return defaultFilters;
   });
-  
+
   const [sortBy, setSortBy] = useState<SortOption>('createdAt-desc');
-  
+
   const [savedViews, setSavedViews] = useState<SavedView[]>(() => {
     const saved = localStorage.getItem(VIEWS_STORAGE_KEY);
     if (saved) {
@@ -118,7 +120,7 @@ export const useKanbanFilters = (cards: Card[]) => {
     // 1. Search
     if (filters.search) {
       const search = filters.search.toLowerCase();
-      result = result.filter(card => 
+      result = result.filter(card =>
         card.title?.toLowerCase().includes(search) ||
         card.description?.toLowerCase().includes(search) ||
         card.chatwootContactName?.toLowerCase().includes(search)
@@ -204,16 +206,34 @@ export const useKanbanFilters = (cards: Card[]) => {
 
     // 11. Chatwoot Conversation ID
     if (filters.chatwootConversationId.length > 0) {
-      result = result.filter(card => 
+      result = result.filter(card =>
         card.chatwootConversationId && filters.chatwootConversationId.includes(card.chatwootConversationId)
       );
     }
 
     // 12. Customer Profile ID
     if (filters.customerProfileId.length > 0) {
-      result = result.filter(card => 
+      result = result.filter(card =>
         card.customerProfileId && filters.customerProfileId.includes(card.customerProfileId)
       );
+    }
+
+    // 13. SLA Status (Novo)
+    if (filters.slaStatus && filters.slaStatus.length > 0 && pipelineConfig?.slaConfig && pipeline) {
+      const columnMap = new Map(pipeline.columns.map(c => [c.id, c.name]));
+
+      result = result.filter(card => {
+        const columnName = columnMap.get(card.columnId);
+        const sla = calculateSLA({
+          createdAt: card.createdAt,
+          updatedAt: card.updatedAt,
+          lastActivityAt: card.lastActivityAt,
+          completionType: card.completionType,
+          columnName
+        }, pipelineConfig.slaConfig);
+
+        return sla && filters.slaStatus.includes(sla.status);
+      });
     }
 
     // Sorting logic... (mantida igual)
@@ -223,13 +243,32 @@ export const useKanbanFilters = (cards: Card[]) => {
         case 'createdAt-asc': return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         case 'value-desc': return (b.value || 0) - (a.value || 0);
         case 'value-asc': return (a.value || 0) - (b.value || 0);
-        // ... add others as needed
+        case 'progress-desc': return (b.lifecycleProgressPercent || 0) - (a.lifecycleProgressPercent || 0);
+        case 'progress-asc': return (a.lifecycleProgressPercent || 0) - (b.lifecycleProgressPercent || 0);
+        case 'lastActivity-desc': {
+          const tA = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : new Date(a.createdAt).getTime();
+          const tB = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : new Date(b.createdAt).getTime();
+          return tB - tA;
+        }
+        case 'lastActivity-asc': {
+          const tA = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : new Date(a.createdAt).getTime();
+          const tB = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : new Date(b.createdAt).getTime();
+          return tA - tB;
+        }
+        case 'priority-desc': {
+          const pMap = { high: 3, medium: 2, low: 1 };
+          return (pMap[b.priority] || 0) - (pMap[a.priority] || 0);
+        }
+        case 'priority-asc': {
+          const pMap = { high: 3, medium: 2, low: 1 };
+          return (pMap[a.priority] || 0) - (pMap[b.priority] || 0);
+        }
         default: return 0;
       }
     });
 
     return result;
-  }, [cards, filters, sortBy]);
+  }, [cards, filters, sortBy, pipeline, pipelineConfig]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -248,6 +287,7 @@ export const useKanbanFilters = (cards: Card[]) => {
     if (filters.inactivityDays) count++;
     if (filters.chatwootConversationId.length) count++;
     if (filters.customerProfileId.length) count++; // Adicionando contador para novo filtro
+    if (filters.slaStatus && filters.slaStatus.length) count++; // Contador SLA
     count += Object.keys(filters.customFields).length;
     return count;
   }, [filters]);

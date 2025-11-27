@@ -31,12 +31,16 @@ interface ChatwootContextData {
 // Shared state outside the hook to survive StrictMode remounts
 let sharedContext: ChatwootContextData | null = null;
 let sharedAppType: 'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null = null;
-let sharedIsChatwootFrame = false;
-let sharedLoading = true;
+// Detectar iframe imediatamente
+const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+let sharedIsChatwootFrame = isIframe;
+// Se não for iframe, não precisa carregar
+let sharedLoading = isIframe;
 
 export const useChatwootContext = (): ChatwootContextType => { // Explicitly define return type
   const [context, setContext] = useState<ChatwootContextData | null>(sharedContext);
   const [isChatwootFrame, setIsChatwootFrame] = useState(sharedIsChatwootFrame);
+  // Inicializar loading com o valor já calculado
   const [loading, setLoading] = useState(sharedLoading);
   const [appType, setAppType] = useState<'dashboard' | 'contact_sidebar' | 'conversation_sidebar' | null>(sharedAppType);
 

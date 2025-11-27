@@ -1,41 +1,42 @@
 export interface KanbanFilters {
   search: string;
-  
+
   // Pessoas
   assignee: string[]; // Agentes
-  
+
   // Funil e Estágios
   funnelType: string[];
   lifecycleStages: string[];
-  
+
   // Métricas (Ranges)
   funnelScoreRange: { min: number; max: number } | null; // Chance de Negócio (0-100)
   qualityScoreRange: { min: number; max: number } | null; // Qualidade (0-100)
   valueRange: { min: number; max: number } | null; // Valor Monetário
-  
+
   // Detalhes do Negócio
   productItem: string[]; // Produtos
   lostReasons: string[]; // Motivos de Perda
-  
+
   // Status e Tempo
   resolutionStatus: string[];
+  slaStatus: string[]; // 'ok', 'warning', 'overdue'
   inactivityDays: number | null;
   dateRange: { start: Date | null; end: Date | null };
-  
+
   // Filtros do Chatwoot
   chatwootConversationId: string[]; // IDs das conversas do Chatwoot
   customerProfileId: string[]; // IDs dos perfis de cliente do Chatwoot
-  
+
   // Flags Booleanas
   isMonetaryLocked: boolean | null;
   isUnassigned: boolean | null;
   isReturningCustomer: boolean | null;
-  
+
   // Campos Personalizados (Chave: Nome do campo, Valor: Valor do filtro)
   customFields: Record<string, any>;
 }
 
-export type SortOption = 
+export type SortOption =
   | 'createdAt-desc'
   | 'createdAt-asc'
   | 'value-desc'

@@ -79,11 +79,11 @@ export function AdvancedFiltersContent({
       // Tenta encontrar o nome do agente na lista de assignees que bate com email ou nome
       // A lógica aqui é simples: se não é admin, injeta o filtro
       // Nota: Isso é uma trava de UI. Para segurança real, RLS no banco é ideal.
-      
+
       // Se o filtro de assignee estiver vazio, preencha com o usuário atual
       // Para evitar loop, verifica se já contém
       const myIdentifiers = [currentUserName, currentUserEmail].filter(Boolean) as string[];
-      
+
       // Encontra qual identifier está sendo usado nos cards (geralmente é o nome vindo do chatwoot)
       const myAgentName = uniqueValues.assignees.find(
         a => myIdentifiers.some(id => a.toLowerCase().includes(id.toLowerCase()))
@@ -116,7 +116,7 @@ export function AdvancedFiltersContent({
 
       <ScrollArea className="h-[60vh] pr-4">
         <Accordion type="multiple" defaultValue={['people', 'funnel']} className="w-full">
-          
+
           {/* 1. PESSOAS (Agentes) - Só mostra se for Admin */}
           <AccordionItem value="people">
             <AccordionTrigger className="text-sm">👤 Pessoas & Atendimento</AccordionTrigger>
@@ -128,7 +128,7 @@ export function AdvancedFiltersContent({
                     {filters.assignee.length} selecionados
                   </Badge>
                 </div>
-                
+
                 {isAdmin ? (
                   <div className="flex flex-wrap gap-2">
                     {uniqueValues.assignees.map(agent => (
@@ -148,11 +148,11 @@ export function AdvancedFiltersContent({
                     Você só pode ver seus próprios chamados.
                   </div>
                 )}
-                
+
                 {isAdmin && (
                   <div className="flex items-center space-x-2 pt-2">
-                    <Checkbox 
-                      id="unassigned" 
+                    <Checkbox
+                      id="unassigned"
                       checked={filters.isUnassigned || false}
                       onCheckedChange={(c) => updateFilter('isUnassigned', c)}
                     />
@@ -174,13 +174,13 @@ export function AdvancedFiltersContent({
                 <Label className="text-xs">Tipo de Funil</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {uniqueValues.funnelTypes.map(type => (
-                    <div 
+                    <div
                       key={type}
                       onClick={() => toggleArrayFilter('funnelType', type)}
                       className={cn(
                         "flex items-center justify-center px-3 py-2 rounded-md border text-xs font-medium cursor-pointer transition-colors",
-                        filters.funnelType.includes(type) 
-                          ? "bg-primary/10 border-primary text-primary" 
+                        filters.funnelType.includes(type)
+                          ? "bg-primary/10 border-primary text-primary"
                           : "bg-background hover:bg-accent"
                       )}
                     >
@@ -193,10 +193,10 @@ export function AdvancedFiltersContent({
               {availableLifecycleStages.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-xs">
-                    Etapas do Ciclo 
+                    Etapas do Ciclo
                     {filters.funnelType.length > 0 && <span className="text-muted-foreground ml-1">(Filtrado por funil)</span>}
                   </Label>
-                  <MultiSelectCombobox 
+                  <MultiSelectCombobox
                     title="Selecionar Etapas"
                     options={availableLifecycleStages}
                     selected={filters.lifecycleStages}
@@ -210,6 +210,32 @@ export function AdvancedFiltersContent({
           <AccordionItem value="metrics">
             <AccordionTrigger className="text-sm">📊 Métricas & Qualidade</AccordionTrigger>
             <AccordionContent className="space-y-6 pt-4 px-1">
+              <div className="space-y-3">
+                <Label className="text-xs">Status do SLA</Label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'ok', label: 'No Prazo', color: 'bg-green-500 hover:bg-green-600' },
+                    { value: 'warning', label: 'Atenção', color: 'bg-amber-500 hover:bg-amber-600' },
+                    { value: 'overdue', label: 'Atrasado', color: 'bg-red-500 hover:bg-red-600' }
+                  ].map(option => {
+                    const isSelected = filters.slaStatus?.includes(option.value);
+                    return (
+                      <Badge
+                        key={option.value}
+                        variant={isSelected ? "default" : "outline"}
+                        className={cn(
+                          "cursor-pointer",
+                          isSelected ? option.color : "hover:bg-accent"
+                        )}
+                        onClick={() => toggleArrayFilter('slaStatus', option.value)}
+                      >
+                        {option.label}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="space-y-3">
                 <div className="flex justify-between text-xs">
                   <Label>Chance de Negócio</Label>
@@ -252,7 +278,7 @@ export function AdvancedFiltersContent({
             <AccordionContent className="space-y-4 pt-2">
               <div className="space-y-2">
                 <Label className="text-xs">Produtos de Interesse</Label>
-                <MultiSelectCombobox 
+                <MultiSelectCombobox
                   title="Buscar Produto..."
                   options={uniqueValues.products}
                   selected={filters.productItem}
@@ -263,8 +289,8 @@ export function AdvancedFiltersContent({
               <Separator />
 
               <div className="space-y-2">
-                 <Label className="text-xs text-red-500">Motivos de Perda</Label>
-                 <MultiSelectCombobox 
+                <Label className="text-xs text-red-500">Motivos de Perda</Label>
+                <MultiSelectCombobox
                   title="Selecionar Motivos..."
                   options={uniqueValues.lostReasons}
                   selected={filters.lostReasons}
@@ -273,7 +299,7 @@ export function AdvancedFiltersContent({
               </div>
 
               <div className="flex items-center space-x-2 pt-2">
-                <Switch 
+                <Switch
                   id="monetary-lock"
                   checked={filters.isMonetaryLocked || false}
                   onCheckedChange={(c) => updateFilter('isMonetaryLocked', c)}
@@ -283,15 +309,15 @@ export function AdvancedFiltersContent({
 
             </AccordionContent>
           </AccordionItem>
-          
+
           {uniqueValues.customFields.length > 0 && (
-             <AccordionItem value="custom">
+            <AccordionItem value="custom">
               <AccordionTrigger className="text-sm">✨ Campos Personalizados</AccordionTrigger>
               <AccordionContent className="space-y-3 pt-2">
                 {uniqueValues.customFields.map(field => (
                   <div key={field} className="space-y-1">
                     <Label className="text-xs capitalize">{field.replace(/_/g, ' ')}</Label>
-                    <Input 
+                    <Input
                       placeholder="Contém..."
                       className="h-8 text-xs"
                       value={filters.customFields[field] || ''}
@@ -309,16 +335,16 @@ export function AdvancedFiltersContent({
   );
 }
 
-function MultiSelectCombobox({ 
-  options, 
-  selected, 
-  onChange, 
-  title 
-}: { 
-  options: string[], 
-  selected: string[], 
-  onChange: (val: string[]) => void, 
-  title: string 
+function MultiSelectCombobox({
+  options,
+  selected,
+  onChange,
+  title
+}: {
+  options: string[],
+  selected: string[],
+  onChange: (val: string[]) => void,
+  title: string
 }) {
   const [open, setOpen] = useState(false);
 
@@ -338,8 +364,8 @@ function MultiSelectCombobox({
           aria-expanded={open}
           className="w-full justify-between h-9 text-xs"
         >
-          {selected.length > 0 
-            ? `${selected.length} selecionado(s)` 
+          {selected.length > 0
+            ? `${selected.length} selecionado(s)`
             : title}
           <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
         </Button>

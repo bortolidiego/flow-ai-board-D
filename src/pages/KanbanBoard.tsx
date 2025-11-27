@@ -65,7 +65,7 @@ const KanbanBoard = () => {
     saveView,
     loadView,
     deleteView,
-  } = useKanbanFilters(cards);
+  } = useKanbanFilters(cards, pipeline, pipelineConfig);
 
   const [activeCard, setActiveCard] = useState<any>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);

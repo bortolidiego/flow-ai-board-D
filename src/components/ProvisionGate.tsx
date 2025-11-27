@@ -5,11 +5,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useChatwootContext } from '@/hooks/useChatwootContext';
 
 export function ProvisionGate({ children }: { children: React.ReactNode }) {
-  const { isProvisioning, isProvisioned } = useProvisioning();
+  const { isProvisioning, isProvisioned, isLoading } = useProvisioning();
   const { isChatwootFrame } = useChatwootContext();
 
-  if (isProvisioning) {
-    // ...
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   // Se não está provisionado, mas é Chatwoot Frame, permitir (o sidebar lida com seus erros)

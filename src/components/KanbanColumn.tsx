@@ -17,6 +17,7 @@ interface Card {
   assignee?: string;
   aiSuggested?: boolean;
   createdAt: string;
+  updatedAt?: string;
   chatwootContactName?: string;
   chatwootAgentName?: string;
   chatwootConversationId?: string;
@@ -65,13 +66,13 @@ interface KanbanColumnProps {
   onSelectAllColumn?: (columnId: string) => void;
 }
 
-export const KanbanColumn = ({ 
-  id, 
-  title, 
-  cards, 
-  count, 
+export const KanbanColumn = ({
+  id,
+  title,
+  cards,
+  count,
   totalValue = 0,
-  onCardClick, 
+  onCardClick,
   pipelineConfig,
   selectionMode = false,
   selectedCardIds = new Set(),
@@ -110,7 +111,7 @@ export const KanbanColumn = ({
       <CollapsibleTrigger asChild>
         {/* Sticky Header dentro da coluna para quando rolar muito para baixo, o título da coluna se manter se possível? 
             Não, o usuário pediu scroll único, então o header da coluna vai rolar junto. */}
-        <div 
+        <div
           className={cn(
             "flex items-center justify-between cursor-pointer rounded-lg transition-all",
             isMobile ? "px-3 py-3 bg-card/50 border border-border/50 hover:bg-card/70 active:scale-[0.98]" : "px-2 cursor-default",
@@ -134,14 +135,14 @@ export const KanbanColumn = ({
               />
             )}
             <h2 className={cn("font-semibold text-foreground truncate", isMobile && "text-base")}>{title}</h2>
-            
+
             <span className={cn("px-2 py-0.5 font-medium rounded-full bg-muted text-muted-foreground flex-shrink-0", isMobile ? "text-sm" : "text-xs")}>
               {count}
             </span>
 
             {totalValue > 0 && (
               <span className={cn(
-                "px-2 py-0.5 font-medium rounded-full bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 flex-shrink-0", 
+                "px-2 py-0.5 font-medium rounded-full bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 flex-shrink-0",
                 isMobile ? "text-sm" : "text-xs"
               )}>
                 {formatCurrency(totalValue)}
@@ -183,7 +184,7 @@ export const KanbanColumn = ({
           className={cn(
             "flex-1 rounded-lg space-y-2 transition-colors backdrop-blur-sm border border-border/30",
             // SEM SCROLL INTERNO. Apenas padding mínimo.
-            isMobile ? "p-3 min-h-[100px]" : "p-2 pb-4 min-h-[150px]", 
+            isMobile ? "p-3 min-h-[100px]" : "p-2 pb-4 min-h-[150px]",
             isOver ? 'bg-primary/5 ring-2 ring-primary/30' : 'bg-card/30'
           )}
         >
@@ -192,6 +193,7 @@ export const KanbanColumn = ({
               <KanbanCard
                 key={card.id}
                 {...card}
+                columnName={title} // Passando nome da coluna para SLA
                 onCardClick={() => onCardClick?.(card.id)}
                 pipelineConfig={pipelineConfig}
                 selectionMode={selectionMode}
