@@ -262,6 +262,7 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
                 {analyzing ? 'Analisando...' : 'Analisar com IA'}
               </Button>
             </div>
+          </div>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
