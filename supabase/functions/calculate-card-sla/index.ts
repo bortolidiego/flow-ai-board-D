@@ -24,6 +24,7 @@ serve(async (req) => {
   }
 
   try {
+    console.log("Calculando SLA - Início da requisição");
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -33,9 +34,10 @@ serve(async (req) => {
     });
 
     const { cardId } = await req.json();
+    console.log(`Card ID recebido: ${cardId}`);
 
     // Buscar card e pipeline config
-    const { data: card } = await supabase
+    const { data: card, error: cardError } = await supabase
       .from('cards')
       .select(`
         id,
@@ -54,7 +56,13 @@ serve(async (req) => {
       .eq('id', cardId)
       .single();
 
+    if (cardError) {
+      console.error("Erro ao buscar card:", cardError);
+      throw cardError;
+    }
+
     if (!card) {
+      console.error("Card não encontrado");
       return new Response(
         JSON.stringify({ error: 'Card not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -63,10 +71,11 @@ serve(async (req) => {
 
     // Se card está finalizado, SLA não se aplica (completed)
     if (card.completion_type) {
+      console.log("Card finalizado (completion_type definido)");
       return new Response(
-        JSON.stringify({ 
-          cardId, 
-          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 } 
+        JSON.stringify({
+          cardId,
+          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -74,67 +83,84 @@ serve(async (req) => {
 
     // Buscar config de SLA
     const pipelineId = (card.columns as any).pipeline_id;
-    const { data: slaConfig } = await supabase
+    console.log(`Pipeline ID: ${pipelineId}`);
+
+    const { data: slaConfig, error: configError } = await supabase
       .from('pipeline_sla_config')
       .select('*')
       .eq('pipeline_id', pipelineId)
       .single();
-      
+
+    if (configError) {
+      console.warn("Erro ao buscar configuração de SLA (usando padrões):", configError);
+    } else {
+      console.log("Configuração de SLA encontrada:", JSON.stringify(slaConfig));
+    }
+
     // Definições padrão
     const firstResponseMinutes = slaConfig?.first_response_minutes || 60;
     const ongoingResponseMinutes = slaConfig?.ongoing_response_minutes || 1440; // 24h
     const warningThreshold = slaConfig?.warning_threshold_percent || 80;
     const strategy = slaConfig?.sla_strategy || 'response_time';
 
+    console.log(`Estratégia aplicada: ${strategy}`);
+    console.log(`Configuração: First=${firstResponseMinutes}, Ongoing=${ongoingResponseMinutes}, Warning=${warningThreshold}%`);
+
     const columnName = (card.columns as any).name;
-    
+    console.log(`Coluna atual: ${columnName}`);
+
     // Cards na coluna "Finalizados" são considerados completed para SLA
     if (columnName === 'Finalizados') {
       return new Response(
-        JSON.stringify({ 
-          cardId, 
-          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 } 
+        JSON.stringify({
+          cardId,
+          sla: { status: 'completed', elapsedMinutes: 0, remainingMinutes: 0, targetMinutes: 0 }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
+
     let targetMinutes: number;
     let baseTime: Date;
-    
+
     // LÓGICA DE CÁLCULO BASEADA NA ESTRATÉGIA
     if (strategy === 'resolution_time') {
       // Estratégia: Tempo Total de Resolução
       // Conta desde a criação do card até agora
       targetMinutes = ongoingResponseMinutes;
       baseTime = new Date(card.created_at);
+      console.log(`Modo Resolução: BaseTime=${baseTime.toISOString()} (Created At)`);
     } else {
       // Estratégia: Tempo de Resposta (Por Etapa/Atividade)
-      
+
       if (columnName === 'Novo Contato' || columnName.toLowerCase().includes('novo')) {
         // Primeiro contato: conta desde a criação
         targetMinutes = firstResponseMinutes;
         baseTime = new Date(card.created_at);
+        console.log(`Modo Resposta (Novo Contato): BaseTime=${baseTime.toISOString()} (Created At)`);
       } else {
         // Resposta contínua: conta desde a última atividade ou atualização (mudança de coluna)
         targetMinutes = ongoingResponseMinutes;
-        
+
         // Prioriza last_activity_at (interação real), fallback para updated_at (mudança de coluna), fallback created_at
         const lastTime = card.last_activity_at || card.updated_at || card.created_at;
         baseTime = new Date(lastTime);
+        console.log(`Modo Resposta (Andamento): BaseTime=${baseTime.toISOString()} (Last Activity/Update)`);
       }
     }
 
     const now = new Date();
     const elapsedMs = now.getTime() - baseTime.getTime();
     const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
-    
+
     const remainingMinutes = Math.max(0, targetMinutes - elapsedMinutes);
     const percentElapsed = targetMinutes > 0 ? (elapsedMinutes / targetMinutes) * 100 : 100;
-    
+
+    console.log(`Cálculo: Elapsed=${elapsedMinutes}m, Target=${targetMinutes}m, Remaining=${remainingMinutes}m, Percent=${percentElapsed.toFixed(2)}%`);
+
     // Determinar status
     let status: 'ok' | 'warning' | 'overdue';
-    
+
     if (elapsedMinutes >= targetMinutes) {
       status = 'overdue';
     } else if (percentElapsed >= warningThreshold) {
@@ -142,6 +168,8 @@ serve(async (req) => {
     } else {
       status = 'ok';
     }
+
+    console.log(`Status final: ${status}`);
 
     const sla: SLAStatus = {
       status,

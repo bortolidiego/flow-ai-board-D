@@ -1,4 +1,4 @@
-import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText, User, Settings } from "lucide-react";
+import { LayoutDashboard, Brain, Bot, Sparkles, LogOut, LogIn, FileText, User, Settings, MessageCircle } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -37,6 +37,12 @@ const menuItems = [
     requireAdmin: true,
   },
   {
+    title: "WhatsApp",
+    url: "/whatsapp-setup",
+    icon: MessageCircle,
+    requireAdmin: true,
+  },
+  {
     title: "Changelog",
     url: "/changelog",
     icon: FileText,
@@ -58,8 +64,8 @@ export function AppSidebar() {
   const { toast } = useToast();
 
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
-    isActive 
-      ? "bg-primary/20 text-primary font-medium border-l-2 border-primary" 
+    isActive
+      ? "bg-primary/20 text-primary font-medium border-l-2 border-primary"
       : "hover:bg-muted/50";
 
   const handleLogout = async () => {
@@ -75,7 +81,7 @@ export function AppSidebar() {
     }
   };
 
-  const filteredMenuItems = menuItems.filter(item => 
+  const filteredMenuItems = menuItems.filter(item =>
     !item.requireAdmin || (item.requireAdmin && isAdmin)
   );
 
@@ -126,17 +132,17 @@ export function AppSidebar() {
 
       <SidebarFooter className="p-4">
         {userId ? (
-          <Button 
-            onClick={handleLogout} 
-            variant="ghost" 
+          <Button
+            onClick={handleLogout}
+            variant="ghost"
             className="w-full justify-start"
           >
             <LogOut className="mr-2 h-4 w-4" />
             {!collapsed && <span>Sair</span>}
           </Button>
         ) : (
-          <Button 
-            onClick={() => navigate('/auth')} 
+          <Button
+            onClick={() => navigate('/auth')}
             variant="ghost"
             className="w-full justify-start"
           >

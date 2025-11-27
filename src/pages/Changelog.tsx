@@ -13,6 +13,28 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "2.7.0",
+    date: "2025-11-27",
+    type: "fix",
+    changes: [
+      "🔧 Corrigida detecção de conversas resolvidas no Chatwoot - cards agora movem automaticamente para última coluna",
+      "🎯 Movida verificação de status 'resolved' para o evento correto (conversation_updated)",
+      "💰 Implementado fallback automático para extração de valores monetários de campos customizados",
+      "💰 Melhorado prompt da IA para priorizar campo 'value' nativo sobre campos customizados",
+      "📝 Corrigido título dos cards - removido sufixo '- Nova' (agora mostra apenas nome do cliente)",
+      "📞 Implementado fallback de telefone quando nome do cliente não está disponível",
+      "👤 Corrigida atualização de nome do agente em cards existentes (message_created)",
+      "🎤 Adicionada detecção de emoção em transcrições de áudio (formato: [Emoção: X] Transcrição)",
+      "🎤 Prompt de transcrição atualizado para modelos multimodais (Gemini, GPT-4o)",
+      "📊 Adicionados logs de debug para value e conversation_status na análise de IA",
+      "📚 Criada documentação completa da integração Chatwoot (CHATWOOT_INTEGRATION.md)",
+      "📚 Documentadas todas as premissas, configurações e troubleshooting da integração",
+      "🔍 Melhorada função getCustomerName com priorização de sender.name para clientes",
+      "🔍 Adicionada validação de valores 'null' como string no nome do cliente",
+      "⚡ Otimizada lógica de atualização de cards para evitar processamento desnecessário",
+    ],
+  },
+  {
     version: "2.6.0",
     date: "2025-11-26",
     type: "feature",

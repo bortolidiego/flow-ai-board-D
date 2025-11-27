@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.check-inactivity-cron]
 verify_jwt = false
+
+[functions.uazapi-webhook]
+verify_jwt = false

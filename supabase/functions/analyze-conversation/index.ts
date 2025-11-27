@@ -38,7 +38,7 @@ function buildAIFunctionSchema(customFields: any[], funnelTypes: string[]) {
     },
     value: {
       type: 'number',
-      description: 'Valor monetário se mencionado'
+      description: 'IMPORTANTE: Valor monetário principal da negociação/orçamento em REAIS (apenas o número, sem R$ ou vírgulas). Este campo é OBRIGATÓRIO quando houver menção de valores. Exemplos: 425.00, 2500, 12000.50. SEMPRE preencha este campo quando identificar valores monetários, mesmo que existam campos customizados similares.'
     },
     conversation_status: {
       type: 'string',
@@ -166,7 +166,7 @@ serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseKey = Deno.env.get('SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify authentication - accept both user tokens and service role key
@@ -186,6 +186,8 @@ serve(async (req) => {
       console.log('Service role authentication - internal call');
       // For service role, we'll skip user verification but still verify ownership later
     } else {
+      console.log(`Auth check failed. Token length: ${token.length}, Key length: ${supabaseKey.length}`);
+      console.log(`Token start: ${token.substring(0, 10)}..., Key start: ${supabaseKey.substring(0, 10)}...`);
       // Regular user authentication
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
       if (authError || !authUser) {
@@ -292,12 +294,8 @@ serve(async (req) => {
     }
 
     // Se não houver modelo configurado, usar modelo padrão
-    if (!modelName || modelName.includes('google/')) {
-      modelName = 'openai/gpt-4o-mini';
-    }
-
     if (!modelName) {
-      throw new Error('AI model not configured and OpenRouter API key is missing.');
+      modelName = 'openai/gpt-4o-mini';
     }
 
     const systemPrompt = aiConfig?.use_custom_prompt && aiConfig?.custom_prompt
@@ -433,7 +431,9 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
       has_current_stage: !!analysis.lifecycle_detection?.current_stage,
       funnel_type: analysis.funnel_analysis?.type,
       subject: analysis.subject,
-      summary: analysis.summary?.substring(0, 100)
+      summary: analysis.summary?.substring(0, 100),
+      value: analysis.value,
+      conversation_status: analysis.conversation_status
     });
 
     // Processar ciclo de vida
@@ -566,6 +566,19 @@ Para o campo "lifecycle_detection", você DEVE identificar em qual etapa a conve
     if (analysis.custom_fields && Object.keys(analysis.custom_fields).length > 0) {
       updateData.custom_fields_data = analysis.custom_fields;
       console.log('Saving custom fields:', analysis.custom_fields);
+
+      // FALLBACK: Se value não foi preenchido mas existe um campo customizado de valor, copiar para o campo nativo
+      if (!analysis.value) {
+        const valueFieldNames = ['valor_orcado', 'valor', 'preco', 'price', 'value', 'orcamento'];
+        for (const fieldName of valueFieldNames) {
+          const customValue = analysis.custom_fields[fieldName];
+          if (customValue && typeof customValue === 'number' && customValue > 0) {
+            updateData.value = customValue;
+            console.log(`⚠️ FALLBACK: Copiando valor de custom_field "${fieldName}" (${customValue}) para campo nativo "value"`);
+            break;
+          }
+        }
+      }
     }
 
     const { error: updateCardError } = await supabase

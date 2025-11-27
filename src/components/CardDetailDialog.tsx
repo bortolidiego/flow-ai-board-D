@@ -12,6 +12,8 @@ import { ServiceQualityMeter } from './ServiceQualityMeter';
 import { CardAnalysisTimeline } from './CardAnalysisTimeline';
 import { LifecycleProgressCard } from './LifecycleProgressCard';
 import { FunnelFieldsCard } from './FunnelFieldsCard';
+import { SendWhatsAppMessageDialog } from './SendWhatsAppMessageDialog';
+import { MessageCircle } from 'lucide-react';
 
 interface PipelineConfig {
   customFields: any[];
@@ -31,6 +33,7 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
   const [analyzing, setAnalyzing] = useState(false);
   const [card, setCard] = useState<any>(null);
   const [leadData, setLeadData] = useState<any>(null);
+  const [showWhatsAppDialog, setShowWhatsAppDialog] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,7 +44,7 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
 
   const fetchCardDetails = async () => {
     if (!cardId) return;
-    
+
     setLoading(true);
     try {
       // Buscar dados do card
@@ -232,65 +235,77 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
             <DialogTitle className="text-2xl">
               {card?.chatwoot_contact_name || card?.title || 'Card Details'}
             </DialogTitle>
-            <Button
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              {analyzing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
+            <div className="flex gap-2">
+              {card?.whatsapp_instance_id && (
+                <Button
+                  onClick={() => setShowWhatsAppDialog(true)}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  WhatsApp
+                </Button>
               )}
-              {analyzing ? 'Analisando...' : 'Analisar com IA'}
-            </Button>
-          </div>
+              <Button
+                onClick={handleAnalyze}
+                disabled={analyzing}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                {analyzing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                {analyzing ? 'Analisando...' : 'Analisar com IA'}
+              </Button>
+            </div>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Informações do Card */}
           {(card?.subject || card?.product_item || card?.value || card?.conversation_status) && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
-          {card?.chatwoot_agent_name && (
-            <div>
-              <p className="text-sm text-muted-foreground">Atendente</p>
-              <p className="font-medium">{card.chatwoot_agent_name}</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+              {card?.chatwoot_agent_name && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Atendente</p>
+                  <p className="font-medium">{card.chatwoot_agent_name}</p>
+                </div>
+              )}
+              {card?.subject && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Assunto</p>
+                  <p className="font-medium">{card.subject}</p>
+                </div>
+              )}
+              {card?.product_item && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Produto/Serviço</p>
+                  <p className="font-medium">{card.product_item}</p>
+                </div>
+              )}
+              {card?.value && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Valor do Negócio</p>
+                  <p className="font-medium text-primary text-lg">
+                    {new Intl.NumberFormat('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    }).format(card.value)}
+                  </p>
+                </div>
+              )}
+              {card?.conversation_status && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Status da Conversa</p>
+                  <Badge variant={card.conversation_status === 'closed' ? 'default' : 'outline'}>
+                    {card.conversation_status === 'closed' ? 'Fechada' : 'Aberta'}
+                  </Badge>
+                </div>
+              )}
             </div>
-          )}
-          {card?.subject && (
-            <div>
-              <p className="text-sm text-muted-foreground">Assunto</p>
-              <p className="font-medium">{card.subject}</p>
-            </div>
-          )}
-          {card?.product_item && (
-            <div>
-              <p className="text-sm text-muted-foreground">Produto/Serviço</p>
-              <p className="font-medium">{card.product_item}</p>
-            </div>
-          )}
-          {card?.value && (
-            <div>
-              <p className="text-sm text-muted-foreground">Valor do Negócio</p>
-              <p className="font-medium text-primary text-lg">
-                {new Intl.NumberFormat('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                }).format(card.value)}
-              </p>
-            </div>
-          )}
-          {card?.conversation_status && (
-            <div>
-              <p className="text-sm text-muted-foreground">Status da Conversa</p>
-              <Badge variant={card.conversation_status === 'closed' ? 'default' : 'outline'}>
-                {card.conversation_status === 'closed' ? 'Fechada' : 'Aberta'}
-              </Badge>
-            </div>
-          )}
-        </div>
           )}
 
           {/* Status de Finalização */}
@@ -329,12 +344,12 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
                 <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg">
                   <Lock className="h-4 w-4 text-red-600" />
                   <p className="text-sm text-red-600 dark:text-red-400">
-                    <strong>Funil Monetário Travado</strong> - Este card mudou de um funil monetário 
+                    <strong>Funil Monetário Travado</strong> - Este card mudou de um funil monetário
                     para não-monetário e foi travado para preservar o valor.
                   </p>
                 </div>
               )}
-              
+
               <LifecycleProgressCard
                 funnelConfig={card.funnelConfig}
                 currentStage={card.current_lifecycle_stage}
@@ -380,6 +395,16 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
             onUpdate={handleLeadDataUpdate}
           />
         </div>
+
+        {card?.whatsapp_instance_id && card?.whatsapp_chat_id && (
+          <SendWhatsAppMessageDialog
+            open={showWhatsAppDialog}
+            onClose={() => setShowWhatsAppDialog(false)}
+            instanceId={card.whatsapp_instance_id}
+            chatId={card.whatsapp_chat_id}
+            contactName={card.whatsapp_contact_name}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -17,6 +17,7 @@ import Auth from '@/pages/Auth';
 import AcceptInvite from '@/pages/AcceptInvite';
 import UpdatePassword from '@/pages/UpdatePassword';
 import ChatwootSetup from '@/pages/ChatwootSetup';
+import WhatsAppSetup from '@/pages/WhatsAppSetup';
 import ChatwootSidebar from '@/pages/ChatwootSidebar';
 import NotFound from '@/pages/NotFound';
 
@@ -105,6 +106,18 @@ function App() {
                     <ProvisionGate>
                       <AppLayout>
                         <ChatwootSetup />
+                      </AppLayout>
+                    </ProvisionGate>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/whatsapp-setup"
+                element={
+                  <ProtectedRoute requireAdmin>
+                    <ProvisionGate>
+                      <AppLayout>
+                        <WhatsAppSetup />
                       </AppLayout>
                     </ProvisionGate>
                   </ProtectedRoute>
