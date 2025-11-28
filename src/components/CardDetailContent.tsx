@@ -66,7 +66,12 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, sho
                 );
             }
 
-            setCard({ ...cardData, funnelConfig });
+            setCard({
+                ...cardData,
+                serviceQualityScore: cardData.service_quality_score,
+                aiSuggestions: cardData.ai_suggestions || [],
+                funnelConfig
+            });
             setLeadData(leadDataResult);
         } catch (error) {
             console.error('Error fetching card details:', error);

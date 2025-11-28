@@ -264,6 +264,7 @@ export const useKanbanData = (workspaceId?: string) => {
         inboxName: card.inbox_name,
         funnelScore: card.funnel_score,
         serviceQualityScore: card.service_quality_score,
+        aiSuggestions: (card.ai_suggestions as string[]) || [],
         value: card.value,
         productItem: card.product_item,
         subject: card.subject,
