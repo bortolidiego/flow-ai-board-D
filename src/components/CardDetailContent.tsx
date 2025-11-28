@@ -213,9 +213,16 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData }: C
     return (
         <div className="h-full overflow-y-auto p-4 space-y-6">
             <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-semibold tracking-tight">
-                    {card?.chatwoot_contact_name || card?.title || 'Detalhes do Card'}
-                </h2>
+                <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-semibold tracking-tight">
+                        {card?.chatwoot_contact_name || card?.title || 'Detalhes do Card'}
+                    </h2>
+                    {(card?.ticketNumber || card?.ticket_number) && (
+                        <Badge variant="secondary" className="text-muted-foreground font-mono">
+                            #{card.ticketNumber || card.ticket_number}
+                        </Badge>
+                    )}
+                </div>
                 <Button
                     onClick={handleAnalyze}
                     disabled={analyzing}

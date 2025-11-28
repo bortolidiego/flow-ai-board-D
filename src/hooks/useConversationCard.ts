@@ -159,6 +159,7 @@ export const useConversationCard = () => {
             assignee: data.assignee,
             ai_suggested: data.ai_suggested,
             createdAt: data.created_at,
+            updatedAt: data.updated_at,
             columnId: data.column_id,
             chatwootContactName: data.chatwoot_contact_name,
             chatwootAgentName: data.chatwoot_agent_name,
@@ -186,6 +187,7 @@ export const useConversationCard = () => {
             resolutionStatus: data.resolution_status,
             isMonetaryLocked: data.is_monetary_locked,
             lastActivityAt: data.last_activity_at,
+            ticketNumber: data.ticket_number,
         };
     };
 
@@ -311,8 +313,6 @@ export const useConversationCard = () => {
         card,
         loading,
         creating,
-        createCard,
-        updateCard,
         createCard,
         updateCard,
         refresh: fetchCard

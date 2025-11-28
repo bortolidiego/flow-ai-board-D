@@ -44,6 +44,7 @@ interface Card {
   resolutionStatus?: string | null;
   isMonetaryLocked?: boolean;
   lastActivityAt?: string | null;
+  ticketNumber?: number;
 }
 
 interface PipelineConfig {

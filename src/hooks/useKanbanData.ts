@@ -32,12 +32,13 @@ export interface Card {
   completionReason?: string | null;
   completedAt?: string | null;
   completedBy?: string | null;
-  customerProfileId?: string | null; // Adicionado customerProfileId
+  customerProfileId?: string | null;
   currentLifecycleStage?: string | null;
   lifecycleProgressPercent?: number;
   resolutionStatus?: string | null;
   isMonetaryLocked?: boolean;
   lastActivityAt?: string | null;
+  ticketNumber?: number;
 }
 
 export interface Column {
@@ -189,15 +190,26 @@ export const useKanbanData = (workspaceId?: string) => {
   };
 
   const fetchCards = async (pipelineId: string) => {
-    const { data: pipelineData } = await supabase
+    console.log('🔄 fetchCards called for pipeline:', pipelineId);
+
+    const { data: pipelineData, error: pipelineError } = await supabase
       .from('pipelines')
       .select('columns(id)')
       .eq('id', pipelineId)
       .single();
 
-    if (!pipelineData?.columns) return;
+    if (pipelineError) {
+      console.error('❌ Error fetching pipeline:', pipelineError);
+      return;
+    }
+
+    if (!pipelineData?.columns) {
+      console.warn('⚠️ No columns found for pipeline:', pipelineId);
+      return;
+    }
 
     const columnIds = (pipelineData.columns as any[]).map(c => c.id);
+    console.log('📋 Column IDs:', columnIds);
 
     const { data: chatwootIntegration } = await supabase
       .from('chatwoot_integrations')
@@ -208,20 +220,28 @@ export const useKanbanData = (workspaceId?: string) => {
     const chatwootUrl = chatwootIntegration?.chatwoot_url;
     const chatwootAccountId = chatwootIntegration?.account_id;
 
+    console.log('🔍 Querying cards with column_ids:', columnIds);
     const { data, error } = await supabase
       .from('cards')
       .select('*')
       .in('column_id', columnIds)
-      .is('deleted_at', null) // FILTER DELETED CARDS
-      .order('position');
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(5000);
 
     if (error) {
+      console.error('❌ Error fetching cards:', error);
       toast({
         title: 'Erro ao carregar cards',
         description: error.message,
         variant: 'destructive',
       });
       return;
+    }
+
+    console.log(`✅ Fetched ${data?.length || 0} cards`);
+    if (data && data.length > 0) {
+      console.log('📦 Sample card:', data[0]);
     }
 
     if (data) {
@@ -255,13 +275,15 @@ export const useKanbanData = (workspaceId?: string) => {
         completionReason: card.completion_reason,
         completedAt: card.completed_at,
         completedBy: card.completed_by,
-        customerProfileId: card.customer_profile_id, // Incluído customer_profile_id
+        customerProfileId: card.customer_profile_id,
         currentLifecycleStage: card.current_lifecycle_stage,
         lifecycleProgressPercent: card.lifecycle_progress_percent,
         resolutionStatus: card.resolution_status,
         isMonetaryLocked: card.is_monetary_locked,
         lastActivityAt: card.last_activity_at,
+        ticketNumber: (card as any).ticket_number,
       }));
+      console.log(`🎯 Setting ${formattedCards.length} formatted cards to state`);
       setCards(formattedCards);
     }
   };
@@ -301,7 +323,7 @@ export const useKanbanData = (workspaceId?: string) => {
       return false;
     }
 
-    return true; // Toast is handled in component to allow Undo action
+    return true;
   };
 
   const restoreCards = async (cardIds: string[]) => {
@@ -318,7 +340,6 @@ export const useKanbanData = (workspaceId?: string) => {
       return false;
     }
 
-    // Refresh handled by caller or realtime
     return true;
   };
 
@@ -354,24 +375,29 @@ export const useKanbanData = (workspaceId?: string) => {
       setLoading(false);
     };
     init();
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!pipeline?.id) return;
 
     const channel = supabase
       .channel('kanban-changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cards' },
-        () => {
-          if (pipeline) {
-            fetchCards(pipeline.id);
-          }
+        (payload) => {
+          console.log('Realtime update received:', payload);
+          fetchCards(pipeline.id);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [workspaceId]);
+  }, [pipeline?.id]);
 
   useEffect(() => {
     if (pipeline) {

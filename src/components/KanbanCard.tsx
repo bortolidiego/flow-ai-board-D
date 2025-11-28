@@ -63,6 +63,8 @@ interface KanbanCardProps {
   isMonetaryLocked?: boolean;
   columnName?: string;
   updatedAt?: string;
+  ticketNumber?: number;
+  lastActivityAt?: string | null; // Adicionado
 }
 export const KanbanCard = ({
   id,
@@ -99,12 +101,13 @@ export const KanbanCard = ({
   completionReason,
   completedAt,
   completedBy,
-  customerProfileId, // Usado aqui
+  customerProfileId,
   currentLifecycleStage,
   lifecycleProgressPercent,
   resolutionStatus,
   isMonetaryLocked,
   lastActivityAt,
+  ticketNumber, // Recebido prop
 }: KanbanCardProps) => {
   const {
     attributes,
@@ -195,6 +198,17 @@ export const KanbanCard = ({
       isSelected ? 'border-primary/80 bg-primary/5 shadow-glow-primary/30 ring-2 ring-primary/30' : 'border-border/50 hover:border-primary/50'
     )}>
       <div className={cn("space-y-2.5", isMobile ? "p-5" : "p-4")}>
+        {/* Ticket Number */}
+        {ticketNumber && (
+          <div className={cn(
+            "absolute text-[10px] text-muted-foreground/40 font-mono font-medium tracking-wider",
+            isMobile ? "top-4 right-4" : "top-2 right-2",
+            selectionMode && "right-10"
+          )}>
+            #{ticketNumber}
+          </div>
+        )}
+
         {/* Checkbox de seleção */}
         {selectionMode && (
           <div className={cn("absolute z-10", isMobile ? "top-4 right-4" : "top-3 right-3")} onClick={handleCheckboxClick}>

@@ -267,8 +267,14 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
 
         <div className="space-y-6 py-4">
           {/* Informações do Card */}
-          {(card?.subject || card?.product_item || card?.value || card?.conversation_status) && (
+          {(card?.subject || card?.product_item || card?.value || card?.conversation_status || card?.ticketNumber || card?.ticket_number) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-muted/30 rounded-lg">
+              {(card?.ticketNumber || card?.ticket_number) && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Ticket</p>
+                  <p className="font-medium text-lg">#{card.ticketNumber || card.ticket_number}</p>
+                </div>
+              )}
               {card?.chatwoot_agent_name && (
                 <div>
                   <p className="text-sm text-muted-foreground">Atendente</p>
@@ -407,6 +413,6 @@ export const CardDetailDialog = ({ cardId, open, onOpenChange, pipelineConfig }:
           />
         )}
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 };
