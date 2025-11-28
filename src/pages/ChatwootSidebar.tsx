@@ -32,32 +32,42 @@ const ChatwootSidebar = () => {
     // Buscar configuração do pipeline
     useEffect(() => {
         const fetchPipelineConfig = async () => {
-            if (!workspace) return;
-
             try {
-                // 1. Buscar pipeline do workspace
-                const { data: pipeline, error: pipelineError } = await supabase
-                    .from('pipelines')
-                    .select('id')
-                    .eq('workspace_id', workspace.id)
-                    .single();
+                let pipelineId: string | null = null;
 
-                if (pipelineError || !pipeline) {
-                    console.error('Error fetching pipeline:', pipelineError);
-                    return;
+                // 1. Tentar pelo Workspace (se já estiver carregado)
+                if (workspace?.id) {
+                    const { data: pipeline } = await supabase
+                        .from('pipelines')
+                        .select('id')
+                        .eq('workspace_id', workspace.id)
+                        .maybeSingle();
+                    if (pipeline) pipelineId = pipeline.id;
                 }
 
-                // 2. Buscar configurações em paralelo
+                // 2. Se não tiver workspace ainda, mas tiver card, tentar pelo card (Fast Path)
+                if (!pipelineId && card?.columnId) {
+                    const { data: column } = await supabase
+                        .from('columns')
+                        .select('pipeline_id')
+                        .eq('id', card.columnId)
+                        .maybeSingle();
+                    if (column) pipelineId = column.pipeline_id;
+                }
+
+                if (!pipelineId) return;
+
+                // 3. Buscar configurações em paralelo
                 const [
                     { data: customFields },
                     { data: funnelTypes },
                     { data: aiConfig },
                     { data: slaConfig }
                 ] = await Promise.all([
-                    supabase.from('pipeline_custom_fields').select('*').eq('pipeline_id', pipeline.id).order('position'),
-                    supabase.from('funnel_config').select('*').eq('pipeline_id', pipeline.id).order('position'),
-                    supabase.from('pipeline_ai_config').select('*').eq('pipeline_id', pipeline.id).maybeSingle(),
-                    supabase.from('pipeline_sla_config').select('*').eq('pipeline_id', pipeline.id).maybeSingle()
+                    supabase.from('pipeline_custom_fields').select('*').eq('pipeline_id', pipelineId).order('position'),
+                    supabase.from('funnel_config').select('*').eq('pipeline_id', pipelineId).order('position'),
+                    supabase.from('pipeline_ai_config').select('*').eq('pipeline_id', pipelineId).maybeSingle(),
+                    supabase.from('pipeline_sla_config').select('*').eq('pipeline_id', pipelineId).maybeSingle()
                 ]);
 
                 setPipelineConfig({
@@ -67,7 +77,7 @@ const ChatwootSidebar = () => {
                     slaConfig: slaConfig || undefined
                 });
 
-                console.log('✅ Pipeline config loaded:', { customFields, funnelTypes, aiConfig });
+                console.log('✅ Pipeline config loaded for pipeline:', pipelineId);
 
             } catch (error) {
                 console.error('Error fetching pipeline config:', error);
@@ -75,7 +85,7 @@ const ChatwootSidebar = () => {
         };
 
         fetchPipelineConfig();
-    }, [workspace]);
+    }, [workspace?.id, card?.columnId]);
 
     if (loading) {
         return (

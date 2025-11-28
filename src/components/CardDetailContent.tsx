@@ -218,11 +218,7 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, sho
                     <h2 className="text-2xl font-semibold tracking-tight">
                         {card?.chatwoot_contact_name || card?.title || 'Detalhes do Card'}
                     </h2>
-                    {(card?.ticketNumber || card?.ticket_number) && (
-                        <Badge variant="secondary" className="text-muted-foreground font-mono">
-                            #{card.ticketNumber || card.ticket_number}
-                        </Badge>
-                    )}
+
                 </div>
                 <Button
                     onClick={handleAnalyze}
@@ -241,8 +237,14 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, sho
             </div>
 
             {/* Informações do Card */}
-            {(card?.subject || card?.product_item || card?.value || card?.conversation_status) && (
+            {(card?.subject || card?.product_item || card?.value || card?.conversation_status || card?.ticketNumber || card?.ticket_number) && (
                 <div className="grid grid-cols-1 gap-4 p-4 bg-muted/30 rounded-lg">
+                    {(card?.ticketNumber || card?.ticket_number) && (
+                        <div>
+                            <p className="text-sm text-muted-foreground">Ticket</p>
+                            <p className="font-medium font-mono">#{card.ticketNumber || card.ticket_number}</p>
+                        </div>
+                    )}
                     {card?.chatwoot_agent_name && (
                         <div>
                             <p className="text-sm text-muted-foreground">Atendente</p>

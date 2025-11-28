@@ -45,11 +45,51 @@ export const useConversationCard = () => {
 
         setLoading(true);
         try {
-            // Se não tiver workspace, não buscar
+            // 🚀 OTIMIZAÇÃO: Tentativa de busca direta por Conversation ID (Fast Path)
+            // Não espera pelo workspace carregar
+            if (conversationId) {
+                console.log('🚀 fetchCard: Tentando Fast Path por ConversationID:', conversationId);
+                const { data: cardData, error: cardError } = await supabase
+                    .from('cards')
+                    .select('*')
+                    .is('deleted_at', null)
+                    .eq('chatwoot_conversation_id', conversationId.toString())
+                    .maybeSingle();
+
+                if (cardData && !cardError) {
+                    console.log('✅ Fast Path: Card encontrado!', cardData.id);
+
+                    // Buscar dados complementares (Pipeline -> Integração)
+                    // Precisamos disso para formatar o card com a URL do Chatwoot correta
+                    const { data: columnData } = await supabase
+                        .from('columns')
+                        .select('pipeline_id')
+                        .eq('id', cardData.column_id)
+                        .single();
+
+                    let chatwootUrl, chatwootAccountId;
+
+                    if (columnData?.pipeline_id) {
+                        const { data: integration } = await supabase
+                            .from('chatwoot_integrations')
+                            .select('chatwoot_url, account_id')
+                            .eq('pipeline_id', columnData.pipeline_id)
+                            .maybeSingle();
+
+                        chatwootUrl = integration?.chatwoot_url;
+                        chatwootAccountId = integration?.account_id;
+                    }
+
+                    setCard(formatCardData(cardData, chatwootUrl, chatwootAccountId));
+                    setLoading(false);
+                    return; // Retorna cedo, sucesso!
+                }
+            }
+
+            // --- Fallback / Fluxo Normal (precisa do Workspace) ---
             if (!workspace?.id) {
-                console.log('⚠️ fetchCard: Workspace ID missing', workspace);
-                setCard(null);
-                setLoading(false);
+                console.log('⏳ fetchCard: Aguardando workspace...');
+                // Não setamos loading=false aqui para manter o spinner enquanto o workspace carrega
                 return;
             }
 
@@ -86,7 +126,7 @@ export const useConversationCard = () => {
             const chatwootUrl = chatwootIntegration?.chatwoot_url;
             const chatwootAccountId = chatwootIntegration?.account_id;
 
-            // Prioridade 1: Buscar por Conversation ID
+            // Prioridade 1: Buscar por Conversation ID (se falhou no fast path ou se workspace carregou depois)
             if (conversationId) {
                 const { data, error } = await supabase
                     .from('cards')
