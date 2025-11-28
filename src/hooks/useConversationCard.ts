@@ -76,6 +76,16 @@ export const useConversationCard = () => {
             const columnIds = (pipelineData.columns as any[]).map(c => c.id);
             console.log('🔍 fetchCard: Found column IDs:', columnIds);
 
+            // Buscar dados da integração Chatwoot
+            const { data: chatwootIntegration } = await supabase
+                .from('chatwoot_integrations')
+                .select('chatwoot_url, account_id')
+                .eq('pipeline_id', pipelineData.id)
+                .maybeSingle();
+
+            const chatwootUrl = chatwootIntegration?.chatwoot_url;
+            const chatwootAccountId = chatwootIntegration?.account_id;
+
             // Prioridade 1: Buscar por Conversation ID
             if (conversationId) {
                 const { data, error } = await supabase
@@ -89,7 +99,8 @@ export const useConversationCard = () => {
                 console.log('🔍 Search by ConversationID result:', { data, error });
 
                 if (!error && data) {
-                    setCard(formatCardData(data));
+                    console.log('✅ Card found by ConversationID:', data);
+                    setCard(formatCardData(data, chatwootUrl, chatwootAccountId));
                     setLoading(false);
                     return;
                 }
@@ -106,7 +117,8 @@ export const useConversationCard = () => {
                     .maybeSingle();
 
                 if (!error && data) {
-                    setCard(formatCardData(data));
+                    console.log('✅ Card found by ContactID:', data);
+                    setCard(formatCardData(data, chatwootUrl, chatwootAccountId));
                     setLoading(false);
                     return;
                 }
@@ -150,7 +162,7 @@ export const useConversationCard = () => {
         };
     }, [card?.id, fetchCard]);
 
-    const formatCardData = (data: any): Card => {
+    const formatCardData = (data: any, chatwootUrl?: string, chatwootAccountId?: string): Card => {
         return {
             id: data.id,
             title: data.title,
@@ -164,8 +176,8 @@ export const useConversationCard = () => {
             chatwootContactName: data.chatwoot_contact_name,
             chatwootAgentName: data.chatwoot_agent_name,
             chatwootConversationId: data.chatwoot_conversation_id,
-            chatwootUrl: data.chatwoot_url, // Note: might need to fetch from integration
-            chatwootAccountId: data.chatwoot_account_id, // Note: might need to fetch from integration
+            chatwootUrl: chatwootUrl,
+            chatwootAccountId: chatwootAccountId,
             inboxName: data.inbox_name,
             funnelScore: data.funnel_score,
             serviceQualityScore: data.service_quality_score,

@@ -35,9 +35,40 @@ const ChatwootSidebar = () => {
             if (!workspace) return;
 
             try {
-                // Using any cast to bypass strict type checking for quick fix
-                const { data: pipeline, error: pipelineError } = await (supabase as any)
+                // 1. Buscar pipeline do workspace
+                const { data: pipeline, error: pipelineError } = await supabase
                     .from('pipelines')
+                    .select('id')
+                    .eq('workspace_id', workspace.id)
+                    .single();
+
+                if (pipelineError || !pipeline) {
+                    console.error('Error fetching pipeline:', pipelineError);
+                    return;
+                }
+
+                // 2. Buscar configurações em paralelo
+                const [
+                    { data: customFields },
+                    { data: funnelTypes },
+                    { data: aiConfig },
+                    { data: slaConfig }
+                ] = await Promise.all([
+                    supabase.from('pipeline_custom_fields').select('*').eq('pipeline_id', pipeline.id).order('position'),
+                    supabase.from('funnel_config').select('*').eq('pipeline_id', pipeline.id).order('position'),
+                    supabase.from('pipeline_ai_config').select('*').eq('pipeline_id', pipeline.id).maybeSingle(),
+                    supabase.from('pipeline_sla_config').select('*').eq('pipeline_id', pipeline.id).maybeSingle()
+                ]);
+
+                setPipelineConfig({
+                    customFields: customFields || [],
+                    funnelTypes: funnelTypes || [],
+                    aiConfig: aiConfig || undefined,
+                    slaConfig: slaConfig || undefined
+                });
+
+                console.log('✅ Pipeline config loaded:', { customFields, funnelTypes, aiConfig });
+
             } catch (error) {
                 console.error('Error fetching pipeline config:', error);
             }
@@ -63,6 +94,7 @@ const ChatwootSidebar = () => {
                         cardId={card.id}
                         initialCardData={card}
                         pipelineConfig={pipelineConfig}
+                        showHistory={false}
                     />
                 ) : (
                     <div className="h-full flex flex-col justify-center space-y-6 p-4">

@@ -22,9 +22,10 @@ interface CardDetailContentProps {
     cardId: string;
     pipelineConfig?: PipelineConfig | null;
     initialCardData?: any; // Optional: pass data if already available to speed up
+    showHistory?: boolean;
 }
 
-export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData }: CardDetailContentProps) => {
+export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, showHistory = true }: CardDetailContentProps) => {
     const [loading, setLoading] = useState(!initialCardData);
     const [analyzing, setAnalyzing] = useState(false);
     const [card, setCard] = useState<any>(initialCardData || null);
@@ -309,6 +310,7 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData }: C
             <ConversationSummary
                 summary={card?.conversation_summary}
                 description={card?.description}
+                showHistory={showHistory}
             />
 
             {/* Ciclo de Vida */}
