@@ -359,8 +359,8 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, sho
                         type={card?.funnel_type}
                     />
                     <ServiceQualityMeter
-                        score={card?.service_quality_score}
-                        suggestions={card?.ai_suggestions || []}
+                        score={card?.serviceQualityScore}
+                        suggestions={card?.aiSuggestions || []}
                     />
                 </div>
             )}

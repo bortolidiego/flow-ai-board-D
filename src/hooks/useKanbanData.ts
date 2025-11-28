@@ -20,6 +20,7 @@ export interface Card {
   inboxName?: string;
   funnelScore?: number;
   serviceQualityScore?: number;
+  aiSuggestions?: string[];
   value?: number;
   productItem?: string;
   subject?: string;

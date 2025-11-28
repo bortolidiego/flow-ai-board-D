@@ -221,6 +221,7 @@ export const useConversationCard = () => {
             inboxName: data.inbox_name,
             funnelScore: data.funnel_score,
             serviceQualityScore: data.service_quality_score,
+            aiSuggestions: data.ai_suggestions || [],
             value: data.value,
             productItem: data.product_item,
             subject: data.subject,
