@@ -99,6 +99,13 @@ const ChatwootSidebar = () => {
     return (
         <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
             <div className="flex-1 overflow-hidden">
+                <style>{`
+                    .sidebar-trigger, 
+                    button:has(svg.lucide-users),
+                    button:has(svg.lucide-user-plus) {
+                        display: none !important;
+                    }
+                `}</style>
                 {card ? (
                     <CardDetailContent
                         cardId={card.id}
