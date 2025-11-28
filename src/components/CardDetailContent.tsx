@@ -23,9 +23,10 @@ interface CardDetailContentProps {
     pipelineConfig?: PipelineConfig | null;
     initialCardData?: any; // Optional: pass data if already available to speed up
     showHistory?: boolean;
+    hideHeader?: boolean;
 }
 
-export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, showHistory = true }: CardDetailContentProps) => {
+export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, showHistory = true, hideHeader = false }: CardDetailContentProps) => {
     const [loading, setLoading] = useState(!initialCardData);
     const [analyzing, setAnalyzing] = useState(false);
     const [card, setCard] = useState<any>(initialCardData || null);
@@ -213,28 +214,30 @@ export const CardDetailContent = ({ cardId, pipelineConfig, initialCardData, sho
 
     return (
         <div className="h-full overflow-y-auto p-4 space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <h2 className="text-2xl font-semibold tracking-tight">
-                        {card?.chatwoot_contact_name || card?.title || 'Detalhes do Card'}
-                    </h2>
+            {!hideHeader && (
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-semibold tracking-tight">
+                            {card?.chatwoot_contact_name || card?.title || 'Detalhes do Card'}
+                        </h2>
 
+                    </div>
+                    <Button
+                        onClick={handleAnalyze}
+                        disabled={analyzing}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                    >
+                        {analyzing ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Sparkles className="w-4 h-4" />
+                        )}
+                        {analyzing ? 'Analisando...' : 'Analisar com IA'}
+                    </Button>
                 </div>
-                <Button
-                    onClick={handleAnalyze}
-                    disabled={analyzing}
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                >
-                    {analyzing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Sparkles className="w-4 h-4" />
-                    )}
-                    {analyzing ? 'Analisando...' : 'Analisar com IA'}
-                </Button>
-            </div>
+            )}
 
             {/* Informações do Card */}
             {(card?.subject || card?.product_item || card?.value || card?.conversation_status || card?.ticketNumber || card?.ticket_number) && (
